@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const isGitHubPages = process.env.GITHUB_PAGES === "true";
-const githubPagesBasePath = "/sbs-invoice-site";
+const githubPagesBasePath =
+  process.env.GITHUB_PAGES_CUSTOM_DOMAIN === "true"
+    ? ""
+    : "/sbs-invoice-site";
 
 const nextConfig: NextConfig = {
   ...(isGitHubPages
