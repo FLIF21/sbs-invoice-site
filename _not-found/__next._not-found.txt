@@ -2,4 +2,4 @@
 2:I[28270,["/sbs-invoice-site/_next/static/chunks/0huiqdcyxcpt7.js"],"default"]
 3:I[7640,["/sbs-invoice-site/_next/static/chunks/0huiqdcyxcpt7.js"],"default"]
 4:[]
-0:{"rsc":["$","$1","c",{"children":[null,["$","$L2",null,{"parallelRouterKey":"children","template":["$","$L3",null,{}]}]]}],"isPartial":false,"staleTime":300,"varyParams":"$W4","buildId":"qqPW_etKOB1T-NUzpNh0d"}
+0:{"rsc":["$","$1","c",{"children":[null,["$","$L2",null,{"parallelRouterKey":"children","template":["$","$L3",null,{}]}]]}],"isPartial":false,"staleTime":300,"varyParams":"$W4","buildId":"Zy92CxhYdanOP5Z4kYvnu"}
