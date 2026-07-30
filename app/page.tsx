@@ -202,7 +202,7 @@ export default function Home() {
           <small>Расчёт выполняется в браузере. Данные никуда не отправляются.</small>
         </aside>
       </section>
-      <footer>СБС · производство воздуховодов <span>Формулы перенесены из калькулятора_СБС_27.xlsm</span></footer>
+      <footer>производство воздуховодов <span>ООО &quot;ФЮСИС-В&quot;</span></footer>
     </main>
   );
 }
