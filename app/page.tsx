@@ -6,10 +6,11 @@ import autoTable from "jspdf-autotable";
 
 type Kind = "duct" | "elbow" | "transition" | "damperRound" | "damperRect";
 type Thickness = "0.5" | "0.7" | "0.9";
+type NumericValue = number | "";
 type Item = {
-  id: number; kind: Kind; width: number; height: number; length: number;
-  width2: number; height2: number; radius: number; angle: number;
-  thickness: Thickness; qty: number; rail: "20/20" | "30/30";
+  id: number; kind: Kind; width: NumericValue; height: NumericValue; length: NumericValue;
+  width2: NumericValue; height2: NumericValue; radius: NumericValue; angle: NumericValue;
+  thickness: Thickness; qty: NumericValue; rail: "20/20" | "30/30";
 };
 
 const prices = {
@@ -39,9 +40,17 @@ const empty = (id: number): Item => ({
 const rub = (n: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB" }).format(n);
 const num = (n: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(n);
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
+const numericInput = (value: string): NumericValue => value === "" ? "" : Number(value);
 
 function calc(item: Item) {
-  const { width: a, height: b, width2: a2, height2: b2, length: l, radius: r, angle, qty } = item;
+  const a = Number(item.width);
+  const b = Number(item.height);
+  const a2 = Number(item.width2);
+  const b2 = Number(item.height2);
+  const l = Number(item.length);
+  const r = Number(item.radius);
+  const angle = Number(item.angle);
+  const qty = Number(item.qty);
   let unitArea = 0;
   if (item.kind === "elbow") {
     unitArea = (angle * Math.PI / 180) * (2 * (a + b)) * (a / 2 + r) / 1e6;
@@ -114,7 +123,7 @@ export default function Home() {
       autoTable(doc, {
         startY: 55,
         head: [["№", "Наименование", "Кол-во", "S, м²", "Цена за м²", "Сумма"]],
-        body: rows.map((r, idx) => [String(idx + 1), description(r.item), num(r.item.qty), num(r.area), rub(r.rate), rub(r.total)]),
+        body: rows.map((r, idx) => [String(idx + 1), description(r.item), num(Number(r.item.qty)), num(r.area), rub(r.rate), rub(r.total)]),
         styles: { font: "Arial", fontSize: 8, cellPadding: 2 },
         headStyles: { font: "Arial", fontStyle: "bold", fillColor: [35, 48, 45], textColor: 255 },
         columnStyles: { 0: { cellWidth: 8 }, 1: { cellWidth: 85 }, 2: { cellWidth: 16 }, 3: { cellWidth: 18 }, 4: { cellWidth: 27 }, 5: { cellWidth: 30 } },
@@ -176,14 +185,14 @@ export default function Home() {
                 <button className="remove" aria-label="Удалить позицию" onClick={() => items.length > 1 && setItems(items.filter(x => x.id !== i.id))}>×</button>
               </div>
               <div className="item-grid">
-                <label>{i.kind === "damperRound" ? "Диаметр, мм" : "Ширина A, мм"}<input type="number" value={i.width} onChange={e => updateItem(i.id, { width: +e.target.value })} /></label>
-                {i.kind !== "damperRound" && <label>Высота B, мм<input type="number" value={i.height} onChange={e => updateItem(i.id, { height: +e.target.value })} /></label>}
-                {second && <><label>Ширина A₂, мм<input type="number" value={i.width2} onChange={e => updateItem(i.id, { width2: +e.target.value })} /></label><label>Высота B₂, мм<input type="number" value={i.height2} onChange={e => updateItem(i.id, { height2: +e.target.value })} /></label></>}
-                {(i.kind !== "elbow") && <label>Длина L, мм<input type="number" value={i.length} onChange={e => updateItem(i.id, { length: +e.target.value })} /></label>}
-                {elbow && <><label>Угол, °<input type="number" value={i.angle} onChange={e => updateItem(i.id, { angle: +e.target.value })} /></label><label>Радиус R, мм<input type="number" value={i.radius} onChange={e => updateItem(i.id, { radius: +e.target.value })} /></label></>}
+                <label>{i.kind === "damperRound" ? "Диаметр, мм" : "Ширина A, мм"}<input type="number" value={i.width} onChange={e => updateItem(i.id, { width: numericInput(e.target.value) })} /></label>
+                {i.kind !== "damperRound" && <label>Высота B, мм<input type="number" value={i.height} onChange={e => updateItem(i.id, { height: numericInput(e.target.value) })} /></label>}
+                {second && <><label>Ширина A₂, мм<input type="number" value={i.width2} onChange={e => updateItem(i.id, { width2: numericInput(e.target.value) })} /></label><label>Высота B₂, мм<input type="number" value={i.height2} onChange={e => updateItem(i.id, { height2: numericInput(e.target.value) })} /></label></>}
+                {(i.kind !== "elbow") && <label>Длина L, мм<input type="number" value={i.length} onChange={e => updateItem(i.id, { length: numericInput(e.target.value) })} /></label>}
+                {elbow && <><label>Угол, °<input type="number" value={i.angle} onChange={e => updateItem(i.id, { angle: numericInput(e.target.value) })} /></label><label>Радиус R, мм<input type="number" value={i.radius} onChange={e => updateItem(i.id, { radius: numericInput(e.target.value) })} /></label></>}
                 <label>Толщина<select value={i.thickness} onChange={e => updateItem(i.id, { thickness: e.target.value as Thickness })}><option value="0.5">0,5 мм</option><option value="0.7">0,7 мм</option><option value="0.9">0,9 мм</option></select></label>
                 {!i.kind.includes("damper") && <label>Шинорейка<select value={i.rail} onChange={e => updateItem(i.id, { rail: e.target.value as Item["rail"] })}><option>20/20</option><option>30/30</option></select></label>}
-                <label>Количество<input type="number" min="1" value={i.qty} onChange={e => updateItem(i.id, { qty: +e.target.value })} /></label>
+                <label>Количество<input type="number" min="1" value={i.qty} onChange={e => updateItem(i.id, { qty: numericInput(e.target.value) })} /></label>
               </div>
               <div className="line-total"><span>{description(i)}</span><small>{num(c.area)} м² × {rub(c.rate)}</small><strong>{rub(c.total)}</strong></div>
             </article>;
