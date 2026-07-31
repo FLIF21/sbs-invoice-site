@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { downloadInvoiceExcel } from "./excel-export";
 
 type Kind = "duct" | "elbow" | "transition" | "damperRound" | "damperRect";
 type Thickness = "0.5" | "0.7" | "0.9";
@@ -90,6 +91,7 @@ export default function Home() {
     request: "", applicant: "", buyer: "", due: "",
   });
   const [busy, setBusy] = useState(false);
+  const [excelBusy, setExcelBusy] = useState(false);
   const rows = useMemo(() => items.map(i => ({ item: i, ...calc(i) })), [items]);
   const total = rows.reduce((s, r) => s + r.total, 0);
   const vat = total - total / 1.22;
@@ -137,6 +139,24 @@ export default function Home() {
     } finally { setBusy(false); }
   }
 
+  async function excel() {
+    setExcelBusy(true);
+    try {
+      await downloadInvoiceExcel({
+        meta,
+        rows: rows.map(row => ({
+          description: description(row.item),
+          qty: Number(row.item.qty),
+          area: row.area,
+          rate: row.rate,
+          total: row.total,
+        })),
+        total,
+        vat,
+      });
+    } finally { setExcelBusy(false); }
+  }
+
   return (
     <main>
       <header className="topbar">
@@ -153,13 +173,16 @@ export default function Home() {
         <div className="total-card">
           <span>К оплате</span><strong>{rub(total)}</strong>
           <small>включая НДС 22% · {items.length} {items.length === 1 ? "позиция" : "позиций"}</small>
-          <button onClick={pdf} disabled={busy}>{busy ? "Формируем…" : "Скачать PDF"} <b>↗</b></button>
+          <div className="export-actions">
+            <button onClick={pdf} disabled={busy}>{busy ? "Формируем…" : "Скачать PDF"} <b>↗</b></button>
+            <button onClick={excel} disabled={excelBusy}>{excelBusy ? "Формируем…" : "Скачать Excel"} <b>↗</b></button>
+          </div>
         </div>
       </section>
 
       <section className="workspace">
         <div className="panel">
-          <div className="section-title"><span>01</span><div><h2>Данные счёта</h2><p>Реквизиты появятся в PDF</p></div></div>
+          <div className="section-title"><span>01</span><div><h2>Данные счёта</h2><p>Реквизиты появятся в PDF и Excel</p></div></div>
           <div className="form-grid">
             <label>Номер счёта<input value={meta.invoice} onChange={e => setMeta({ ...meta, invoice: e.target.value })} /></label>
             <label>Дата<input type="date" value={meta.date} onChange={e => setMeta({ ...meta, date: e.target.value })} /></label>
@@ -207,7 +230,10 @@ export default function Home() {
           <div><span>Без НДС</span><b>{rub(total / 1.22)}</b></div>
           <div><span>НДС 22%</span><b>{rub(vat)}</b></div>
           <div className="grand"><span>Итого</span><b>{rub(total)}</b></div>
-          <button onClick={pdf} disabled={busy}>Скачать счёт в PDF</button>
+          <div className="export-actions">
+            <button onClick={pdf} disabled={busy}>Скачать счёт в PDF</button>
+            <button onClick={excel} disabled={excelBusy}>{excelBusy ? "Формируем Excel…" : "Скачать счёт в Excel"}</button>
+          </div>
           <small>Расчёт выполняется в браузере. Данные никуда не отправляются.</small>
         </aside>
       </section>
