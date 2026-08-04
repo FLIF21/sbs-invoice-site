@@ -36,11 +36,11 @@ const labels: Record<Kind, string> = {
   damperRound: "Дроссель-заслонка круглая", damperRect: "Дроссель-заслонка прямоугольная",
 };
 const productImages: Record<Kind, { src: string; alt: string }> = {
-  duct: { src: "/products/duct.webp", alt: "Прямоугольный воздуховод из оцинкованной стали" },
-  elbow: { src: "/products/elbow.webp", alt: "Прямоугольный отвод из оцинкованной стали" },
-  transition: { src: "/products/transition.webp", alt: "Прямоугольный переход из оцинкованной стали" },
-  damperRound: { src: "/products/damper-round.webp", alt: "Круглая дроссель-заслонка" },
-  damperRect: { src: "/products/damper-rect.webp", alt: "Прямоугольная дроссель-заслонка" },
+  duct: { src: "/products/duct.png", alt: "Прямоугольный воздуховод из оцинкованной стали" },
+  elbow: { src: "/products/elbow.png", alt: "Прямоугольный отвод из оцинкованной стали" },
+  transition: { src: "/products/transition.png", alt: "Прямоугольный переход из оцинкованной стали" },
+  damperRound: { src: "/products/damper-round.png", alt: "Круглая дроссель-заслонка" },
+  damperRect: { src: "/products/damper-rect.png", alt: "Прямоугольная дроссель-заслонка" },
 };
 const empty = (id: number): Item => ({
   id, kind: "duct", width: 400, height: 250, length: 1500, width2: 300,
