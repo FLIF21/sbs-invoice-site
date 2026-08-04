@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { downloadInvoiceExcel } from "./excel-export";
@@ -33,6 +34,13 @@ const prices = {
 const labels: Record<Kind, string> = {
   duct: "Воздуховод", elbow: "Отвод", transition: "Переход",
   damperRound: "Дроссель-заслонка круглая", damperRect: "Дроссель-заслонка прямоугольная",
+};
+const productImages: Record<Kind, { src: string; alt: string }> = {
+  duct: { src: "/products/duct.webp", alt: "Прямоугольный воздуховод из оцинкованной стали" },
+  elbow: { src: "/products/elbow.webp", alt: "Прямоугольный отвод из оцинкованной стали" },
+  transition: { src: "/products/transition.webp", alt: "Прямоугольный переход из оцинкованной стали" },
+  damperRound: { src: "/products/damper-round.webp", alt: "Круглая дроссель-заслонка" },
+  damperRect: { src: "/products/damper-rect.webp", alt: "Прямоугольная дроссель-заслонка" },
 };
 const empty = (id: number): Item => ({
   id, kind: "duct", width: 400, height: 250, length: 1500, width2: 300,
@@ -207,15 +215,21 @@ export default function Home() {
                 </select>
                 <button className="remove" aria-label="Удалить позицию" onClick={() => items.length > 1 && setItems(items.filter(x => x.id !== i.id))}>×</button>
               </div>
-              <div className="item-grid">
-                <label>{i.kind === "damperRound" ? "Диаметр, мм" : "Ширина A, мм"}<input type="number" value={i.width} onChange={e => updateItem(i.id, { width: numericInput(e.target.value) })} /></label>
-                {i.kind !== "damperRound" && <label>Высота B, мм<input type="number" value={i.height} onChange={e => updateItem(i.id, { height: numericInput(e.target.value) })} /></label>}
-                {second && <><label>Ширина A₂, мм<input type="number" value={i.width2} onChange={e => updateItem(i.id, { width2: numericInput(e.target.value) })} /></label><label>Высота B₂, мм<input type="number" value={i.height2} onChange={e => updateItem(i.id, { height2: numericInput(e.target.value) })} /></label></>}
-                {(i.kind !== "elbow") && <label>Длина L, мм<input type="number" value={i.length} onChange={e => updateItem(i.id, { length: numericInput(e.target.value) })} /></label>}
-                {elbow && <><label>Угол, °<input type="number" value={i.angle} onChange={e => updateItem(i.id, { angle: numericInput(e.target.value) })} /></label><label>Радиус R, мм<input type="number" value={i.radius} onChange={e => updateItem(i.id, { radius: numericInput(e.target.value) })} /></label></>}
-                <label>Толщина<select value={i.thickness} onChange={e => updateItem(i.id, { thickness: e.target.value as Thickness })}><option value="0.5">0,5 мм</option><option value="0.7">0,7 мм</option><option value="0.9">0,9 мм</option></select></label>
-                {!i.kind.includes("damper") && <label>Шинорейка<select value={i.rail} onChange={e => updateItem(i.id, { rail: e.target.value as Item["rail"] })}><option>20/20</option><option>30/30</option></select></label>}
-                <label>Количество<input type="number" min="1" value={i.qty} onChange={e => updateItem(i.id, { qty: numericInput(e.target.value) })} /></label>
+              <div className="product-body">
+                <figure className="product-photo">
+                  <Image src={publicAsset(productImages[i.kind].src)} alt={productImages[i.kind].alt} width={960} height={640} unoptimized />
+                  <figcaption>{labels[i.kind]}</figcaption>
+                </figure>
+                <div className="item-grid">
+                  <label>{i.kind === "damperRound" ? "Диаметр, мм" : "Ширина A, мм"}<input type="number" value={i.width} onChange={e => updateItem(i.id, { width: numericInput(e.target.value) })} /></label>
+                  {i.kind !== "damperRound" && <label>Высота B, мм<input type="number" value={i.height} onChange={e => updateItem(i.id, { height: numericInput(e.target.value) })} /></label>}
+                  {second && <><label>Ширина A₂, мм<input type="number" value={i.width2} onChange={e => updateItem(i.id, { width2: numericInput(e.target.value) })} /></label><label>Высота B₂, мм<input type="number" value={i.height2} onChange={e => updateItem(i.id, { height2: numericInput(e.target.value) })} /></label></>}
+                  {(i.kind !== "elbow") && <label>Длина L, мм<input type="number" value={i.length} onChange={e => updateItem(i.id, { length: numericInput(e.target.value) })} /></label>}
+                  {elbow && <><label>Угол, °<input type="number" value={i.angle} onChange={e => updateItem(i.id, { angle: numericInput(e.target.value) })} /></label><label>Радиус R, мм<input type="number" value={i.radius} onChange={e => updateItem(i.id, { radius: numericInput(e.target.value) })} /></label></>}
+                  <label>Толщина<select value={i.thickness} onChange={e => updateItem(i.id, { thickness: e.target.value as Thickness })}><option value="0.5">0,5 мм</option><option value="0.7">0,7 мм</option><option value="0.9">0,9 мм</option></select></label>
+                  {!i.kind.includes("damper") && <label>Шинорейка<select value={i.rail} onChange={e => updateItem(i.id, { rail: e.target.value as Item["rail"] })}><option>20/20</option><option>30/30</option></select></label>}
+                  <label>Количество<input type="number" min="1" value={i.qty} onChange={e => updateItem(i.id, { qty: numericInput(e.target.value) })} /></label>
+                </div>
               </div>
               <div className="line-total"><span>{description(i)}</span><small>{num(c.area)} м² × {rub(c.rate)}</small><strong>{rub(c.total)}</strong></div>
             </article>;
