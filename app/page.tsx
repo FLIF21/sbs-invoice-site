@@ -217,7 +217,7 @@ export default function Home() {
               </div>
               <div className="product-body">
                 <figure className="product-photo">
-                  <Image src={publicAsset(productImages[i.kind].src)} alt={productImages[i.kind].alt} width={960} height={640} unoptimized />
+                  <Image src={publicAsset(productImages[i.kind].src)} alt={productImages[i.kind].alt} width={960} height={640} loading="eager" unoptimized />
                   <figcaption>{labels[i.kind]}</figcaption>
                 </figure>
                 <div className="item-grid">
