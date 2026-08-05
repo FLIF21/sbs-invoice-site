@@ -200,6 +200,8 @@ async function seed() {
     data: Object.values(PermissionKey).map((permission) => ({ userId: admin.id, permission, allowed: true })),
     skipDuplicates: true,
   });
+
+  console.log("Database seed completed");
 }
 
 seed()
