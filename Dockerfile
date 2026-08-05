@@ -25,9 +25,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/container-start.mjs ./scripts/container-start.mjs
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=12 CMD wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1
-CMD ["sh", "-c", "node server.js & server_pid=$!; trap 'kill $server_pid 2>/dev/null' TERM INT; ./node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/tsx prisma/seed.ts; init_status=$?; if [ $init_status -ne 0 ]; then kill $server_pid 2>/dev/null; exit $init_status; fi; wait $server_pid"]
+CMD ["node", "scripts/container-start.mjs"]
