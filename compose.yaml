@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sbs_invoice
+      POSTGRES_USER: sbs
+      POSTGRES_PASSWORD: sbs_local_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - sbs_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sbs -d sbs_invoice"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  sbs_postgres_data:

@@ -21,6 +21,10 @@ type InvoiceExcelData = {
   rows: InvoiceRow[];
   total: number;
   vat: number;
+  subtotal: number;
+  taxEnabled: boolean;
+  taxRate: number;
+  companyName: string;
 };
 
 const templateUrl = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/invoice-template.xlsx`;
@@ -36,7 +40,7 @@ function cloneStyle<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-export async function downloadInvoiceExcel(data: InvoiceExcelData) {
+async function buildInvoiceExcel(data: InvoiceExcelData) {
   const exceljs = await import("exceljs");
   const Workbook = exceljs.Workbook ?? exceljs.default.Workbook;
   const templateResponse = await fetch(templateUrl);
@@ -60,7 +64,7 @@ export async function downloadInvoiceExcel(data: InvoiceExcelData) {
     fitToHeight: 0,
     printArea: `B3:L${33 + data.rows.length}`,
   };
-  workbook.creator = 'ООО "ФЮСИС-В"';
+  workbook.creator = data.companyName;
   workbook.modified = new Date();
   workbook.calcProperties.fullCalcOnLoad = true;
 
@@ -97,7 +101,7 @@ export async function downloadInvoiceExcel(data: InvoiceExcelData) {
   sheet.getCell("D7").value = data.meta.applicant || "—";
   sheet.getCell("F7").value = data.rows.length;
   sheet.getCell("G7").value = "К оплате";
-  sheet.getCell("H7").value = 'ООО "ФЮСИС-В"';
+  sheet.getCell("H7").value = data.companyName;
   sheet.getCell("K7").value = new Date();
   sheet.getCell("K7").numFmt = "dd.mm.yyyy";
 
@@ -122,10 +126,10 @@ export async function downloadInvoiceExcel(data: InvoiceExcelData) {
 
   sheet.getCell("B17").value = "ИТОГО К ОПЛАТЕ";
   sheet.getCell("B18").value = "Без НДС";
-  sheet.getCell("F18").value = "НДС 22%";
+  sheet.getCell("F18").value = data.taxEnabled ? `НДС ${data.taxRate}%` : "Без НДС";
   sheet.getCell("I18").value = "К оплате";
-  sheet.getCell("B19").value = { formula: `J${33 + data.rows.length}/1.22`, result: data.total / 1.22 };
-  sheet.getCell("F19").value = { formula: `J${33 + data.rows.length}-B19`, result: data.vat };
+  sheet.getCell("B19").value = data.subtotal;
+  sheet.getCell("F19").value = data.vat;
   sheet.getCell("I19").value = { formula: `J${33 + data.rows.length}`, result: data.total };
   for (const address of ["B19", "F19", "I19"]) sheet.getCell(address).numFmt = moneyFormat;
   sheet.getCell("I19").font = { ...sheet.getCell("I19").font, bold: true };
@@ -222,3 +226,39 @@ export async function downloadInvoiceExcel(data: InvoiceExcelData) {
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
+
+export async function downloadInvoiceExcel(invoice: InvoiceDocument) {
+  const clientDetails = [
+    invoice.client.name,
+    invoice.client.inn ? `ИНН ${invoice.client.inn}` : "",
+    invoice.client.kpp ? `КПП ${invoice.client.kpp}` : "",
+    invoice.client.address ?? "",
+    invoice.client.phone ?? "",
+    invoice.client.email ?? "",
+  ].filter(Boolean).join(", ");
+  await buildInvoiceExcel({
+    meta: {
+      invoice: invoice.number,
+      date: invoice.issueDate.slice(0, 10),
+      project: invoice.project ?? "",
+      request: invoice.requestNumber ?? "",
+      applicant: invoice.applicant ?? "",
+      buyer: clientDetails,
+      due: invoice.dueDate?.slice(0, 10) ?? "",
+    },
+    rows: invoice.items.map((item) => ({
+      description: item.description,
+      qty: item.quantity,
+      area: item.area,
+      rate: item.grossUnitPrice,
+      total: item.grossTotal,
+    })),
+    total: invoice.total,
+    vat: invoice.taxAmount,
+    subtotal: invoice.subtotal,
+    taxEnabled: invoice.tax.enabled,
+    taxRate: invoice.tax.rate,
+    companyName: invoice.company.legalName,
+  });
+}
+import type { InvoiceDocument } from "@/lib/domain/types";

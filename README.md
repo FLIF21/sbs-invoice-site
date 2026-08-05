@@ -1,98 +1,114 @@
-# vinext-starter
+# СБС Счёт
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Коммерческая SaaS-система для расчёта воздуховодов, управления прайсом и формирования счетов. Приложение построено как модульный монолит на Next.js: публичный калькулятор и защищённая административная панель используют одну доменную модель и один серверный механизм расчёта.
 
-## Prerequisites
+## Что реализовано
 
-- Node.js `>=22.13.0`
+- публичный калькулятор с фотографиями изделий и адаптивным интерфейсом;
+- серверный расчёт по данным PostgreSQL без цен и ставок в React-коде;
+- сохранение каждого счёта вместе со снимком цен, коэффициентов, НДС, клиента и реквизитов;
+- PDF в существующей стилистике и Excel на базе `public/invoice-template.xlsx`;
+- автоматическая транзакционная нумерация счетов;
+- `/admin` с JWT-сессиями в `HttpOnly` cookie;
+- роли `ADMIN`, `MANAGER`, `VIEWER` и индивидуальные разрешения;
+- управление ценами изделий, металлом, коэффициентами, НДС, реквизитами, логотипом и нумерацией;
+- история счетов: поиск, фильтр, редактирование, копирование, повторный PDF/Excel и отмена без физического уничтожения документа;
+- база клиентов с историей и суммой заказов;
+- аналитика за день, месяц, год, средний счёт, новые клиенты и популярные изделия;
+- неизменяемый журнал действий;
+- зашифрованные резервные копии и восстановление;
+- светлая и тёмная темы, адаптивная админ-панель;
+- защита от SQL Injection через Prisma, валидация Zod, проверка `Origin`, безопасные cookie, CSP, защита от перебора паролей и серверное ограничение частоты создания счетов.
 
-## Quick Start
+## Архитектура
+
+```text
+app/
+  page.tsx                    публичный сайт
+  admin/                      вход и защищённая панель
+  api/public/                 публичные серверные операции
+  api/admin/                  API с проверкой разрешений
+components/
+  calculator/                 интерфейс калькулятора
+  admin/                      административные модули
+lib/
+  domain/                     чистые типы и расчётные функции
+  server/                     Prisma, JWT, аудит, счета, backup
+  validation/                 входные схемы Zod
+prisma/
+  schema.prisma               модель PostgreSQL
+  migrations/                 версионированная схема БД
+  seed.ts                     первоначальные данные
+```
+
+Расчёт устроен так:
+
+```text
+стоимость металла × доля металла + работа
+                     ↓
+       включённые коэффициенты
+                     ↓
+              настраиваемый НДС
+                     ↓
+     сохранённый снимок в Invoice
+```
+
+Изменение металла или коэффициентов немедленно влияет на новые расчёты. Старые счета не пересчитываются и поэтому повторно выгружаются с исходными значениями.
+
+## Локальный запуск
+
+Требования: Node.js 22+, pnpm и PostgreSQL 17+. Для PostgreSQL подготовлен `compose.yaml`.
+
+```powershell
+Copy-Item .env.example .env
+pnpm install
+docker compose up -d postgres
+pnpm db:migrate
+pnpm db:seed
+pnpm dev
+```
+
+Перед `db:seed` обязательно замените `ADMIN_EMAIL`, `ADMIN_PASSWORD` и `ADMIN_NAME`. Пароль администратора должен содержать не менее 12 символов.
+
+- сайт: `http://localhost:3000`
+- админ-панель: `http://localhost:3000/admin`
+
+## Переменные окружения
+
+| Переменная | Назначение |
+| --- | --- |
+| `DATABASE_URL` | строка подключения PostgreSQL |
+| `JWT_SECRET` | ключ подписи JWT, минимум 32 случайных символа |
+| `BACKUP_SECRET` | отдельный ключ AES-256 для резервных копий |
+| `APP_URL` | полный внешний URL приложения |
+| `SESSION_TTL_HOURS` | срок административной сессии |
+| `ADMIN_NAME` | имя первого администратора для seed |
+| `ADMIN_EMAIL` | email первого администратора для seed |
+| `ADMIN_PASSWORD` | пароль первого администратора для seed |
+
+`BACKUP_SECRET` нельзя менять или терять: без исходного ключа ранее созданные `.sbsbak` восстановить невозможно.
+
+## Production
+
+GitHub Pages обслуживает только статические файлы и не может запускать Node.js, Prisma и PostgreSQL. Текущий публичный сайт можно оставить на Pages до готовности новой инфраструктуры, но SaaS следует размещать на любом Node.js-хостинге с управляемым PostgreSQL или через приложенный `Dockerfile`.
+
+Обычный порядок развёртывания:
 
 ```bash
-npm install
-npm run dev
-npm run build
+pnpm install --frozen-lockfile
+pnpm db:migrate:deploy
+pnpm start
 ```
 
-This starter does not use `wrangler.jsonc`.
+Перед запуском задаются production-переменные окружения, выполняется `pnpm db:seed` один раз, на прокси включается HTTPS и регулярное резервное копирование PostgreSQL. После проверки временного адреса DNS домена `sbs-schet.ru` переключается с GitHub Pages на новый хост, а `APP_URL` меняется на `https://sbs-schet.ru`.
 
-## Included Shape
+## Проверка
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+Unit-тесты контролируют формулы площади, настраиваемый НДС и форматы нумерации.
