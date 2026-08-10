@@ -8,7 +8,7 @@ import { calculateQuote } from "@/lib/domain/pricing";
 import type { InvoiceDocument, ProductDimensions, PublicCatalog, QuoteItemInput } from "@/lib/domain/types";
 import { downloadInvoicePdf } from "@/lib/client/pdf-export";
 
-type NumericValue = number | "";
+type NumericValue = number | string;
 type EditableDimensions = Omit<ProductDimensions, "width" | "height" | "width2" | "height2" | "length" | "radius" | "angle" | "area"> & {
   width?: NumericValue;
   height?: NumericValue;
@@ -23,7 +23,7 @@ type EditableItem = { id: number; productCode: string; thicknessCode: string; qu
 
 const rub = (value: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB" }).format(value);
 const num = (value: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 }).format(value);
-const numericInput = (value: string): NumericValue => value === "" ? "" : Number(value);
+const numericInput = (value: string): NumericValue => value.replace(",", ".");
 
 function makeItem(catalog: PublicCatalog, id: number, productCode = catalog.products[0]?.code): EditableItem {
   const product = catalog.products.find((candidate) => candidate.code === productCode) ?? catalog.products[0];
@@ -39,7 +39,9 @@ function makeItem(catalog: PublicCatalog, id: number, productCode = catalog.prod
 
 function toQuoteItem(item: EditableItem): QuoteItemInput {
   const dimensions = Object.fromEntries(
-    Object.entries(item.dimensions).filter(([, value]) => value !== ""),
+    Object.entries(item.dimensions)
+      .filter(([, value]) => value !== "")
+      .map(([key, value]) => [key, key === "rail" ? value : Number(value)]),
   ) as ProductDimensions;
   return {
     productCode: item.productCode,
@@ -50,7 +52,16 @@ function toQuoteItem(item: EditableItem): QuoteItemInput {
 }
 
 function NumberField({ label, value, onChange, min }: { label: string; value?: NumericValue; onChange: (value: NumericValue) => void; min?: number }) {
-  return <label>{label}<input type="number" min={min} value={value ?? ""} onChange={(event) => onChange(numericInput(event.target.value))} /></label>;
+  return <label>{label}<input
+    type="text"
+    inputMode="decimal"
+    data-min={min}
+    value={value ?? ""}
+    onChange={(event) => {
+      const next = numericInput(event.target.value);
+      if (/^\d*(?:\.\d*)?$/.test(String(next))) onChange(next);
+    }}
+  /></label>;
 }
 
 export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }) {

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { PasswordField } from "./PasswordField";
 
 export function LoginForm() {
   const router = useRouter();
@@ -39,7 +40,8 @@ export function LoginForm() {
       <h1>Вход в систему</h1>
       <p>Цены, счета, клиенты и настройки доступны только авторизованным сотрудникам.</p>
       <label>Email<input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-      <label>Пароль<input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+      <PasswordField label="Пароль" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
+      <Link className="forgot-password-link" href="/admin/forgot-password">Забыли пароль?</Link>
       {error && <div className="admin-alert error">{error}</div>}
       <button className="primary-button" disabled={busy}>{busy ? "Проверяем…" : "Войти"}</button>
       <Link href="/">← Вернуться к калькулятору</Link>

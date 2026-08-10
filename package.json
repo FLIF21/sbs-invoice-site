@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "start": "next start",
+    "start": "next start --hostname 0.0.0.0 --port 3000",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -28,6 +28,7 @@
     "jspdf": "4.2.1",
     "jspdf-autotable": "5.0.8",
     "next": "16.2.6",
+    "nodemailer": "7.0.10",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "zod": "4.1.12"
@@ -35,6 +36,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
+    "@types/nodemailer": "7.0.4",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.4",

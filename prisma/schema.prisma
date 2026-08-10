@@ -68,6 +68,21 @@ model User {
   invoices     Invoice[]        @relation("InvoiceCreator")
   auditLogs    AuditLog[]
   backups      BackupRecord[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  requestedIp String?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt, usedAt])
 }
 
 model UserPermission {

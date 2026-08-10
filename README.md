@@ -82,6 +82,12 @@ pnpm dev
 | `BACKUP_SECRET` | отдельный ключ AES-256 для резервных копий |
 | `APP_URL` | полный внешний URL приложения |
 | `SESSION_TTL_HOURS` | срок административной сессии |
+| `SMTP_HOST` | адрес SMTP-сервера для писем восстановления пароля |
+| `SMTP_PORT` | порт SMTP-сервера (`587` для STARTTLS, `465` для TLS) |
+| `SMTP_SECURE` | `true` для порта 465, иначе `false` |
+| `SMTP_USER` | имя пользователя SMTP |
+| `SMTP_PASSWORD` | пароль приложения или пароль SMTP |
+| `SMTP_FROM` | подтверждённый адрес отправителя |
 | `ADMIN_NAME` | имя первого администратора для seed |
 | `ADMIN_EMAIL` | email первого администратора для seed |
 | `ADMIN_PASSWORD` | пароль первого администратора для seed |
