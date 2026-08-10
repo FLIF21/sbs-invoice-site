@@ -16,6 +16,22 @@ export async function sendPasswordResetEmail(input: { email: string; name: strin
   const env = getMailEnv();
   const resetUrl = new URL("/admin/reset-password", env.appUrl);
   resetUrl.searchParams.set("token", input.token);
+  const subject = "Восстановление пароля — СБС Управление";
+  const text = `Здравствуйте, ${input.name}. Для смены пароля откройте ссылку: ${resetUrl.toString()}\n\nСсылка действует 30 минут. Если вы не запрашивали восстановление, проигнорируйте письмо.`;
+  const html = `<p>Здравствуйте, ${escapeHtml(input.name)}.</p><p>Для смены пароля нажмите кнопку:</p><p><a href="${escapeHtml(resetUrl.toString())}" style="display:inline-block;padding:12px 18px;background:#22302b;color:#fff;text-decoration:none;font-weight:700">Сменить пароль</a></p><p>Ссылка действует 30 минут. Если вы не запрашивали восстановление, проигнорируйте письмо.</p>`;
+
+  if (env.provider === "resend") {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from: env.from, to: [input.email], subject, text, html }),
+    });
+    if (!response.ok) throw new Error(`Resend rejected email with status ${response.status}`);
+    return;
+  }
 
   const transporter = nodemailer.createTransport({
     host: env.host,
@@ -27,8 +43,8 @@ export async function sendPasswordResetEmail(input: { email: string; name: strin
   await transporter.sendMail({
     from: env.from,
     to: input.email,
-    subject: "Восстановление пароля — СБС Управление",
-    text: `Здравствуйте, ${input.name}. Для смены пароля откройте ссылку: ${resetUrl.toString()}\n\nСсылка действует 30 минут. Если вы не запрашивали восстановление, проигнорируйте письмо.`,
-    html: `<p>Здравствуйте, ${escapeHtml(input.name)}.</p><p>Для смены пароля нажмите кнопку:</p><p><a href="${escapeHtml(resetUrl.toString())}" style="display:inline-block;padding:12px 18px;background:#22302b;color:#fff;text-decoration:none;font-weight:700">Сменить пароль</a></p><p>Ссылка действует 30 минут. Если вы не запрашивали восстановление, проигнорируйте письмо.</p>`,
+    subject,
+    text,
+    html,
   });
 }

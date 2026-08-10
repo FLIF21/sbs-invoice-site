@@ -13,6 +13,8 @@ const schema = z.object({
   SMTP_USER: z.string().min(1).optional(),
   SMTP_PASSWORD: z.string().min(1).optional(),
   SMTP_FROM: z.email().optional(),
+  RESEND_API_KEY: z.string().min(1).optional(),
+  EMAIL_FROM: z.email().optional(),
 });
 
 export function getEnv() {
@@ -21,10 +23,20 @@ export function getEnv() {
 
 export function getMailEnv() {
   const env = getEnv();
+  const from = env.EMAIL_FROM ?? env.SMTP_FROM;
+  if (env.RESEND_API_KEY && from) {
+    return {
+      provider: "resend" as const,
+      apiKey: env.RESEND_API_KEY,
+      from,
+      appUrl: env.APP_URL,
+    };
+  }
   if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASSWORD || !env.SMTP_FROM) {
-    throw new Error("SMTP не настроен: задайте SMTP_HOST, SMTP_USER, SMTP_PASSWORD и SMTP_FROM");
+    throw new Error("Почта не настроена: задайте RESEND_API_KEY и EMAIL_FROM либо параметры SMTP");
   }
   return {
+    provider: "smtp" as const,
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
     secure: env.SMTP_SECURE,

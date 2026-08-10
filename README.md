@@ -88,6 +88,8 @@ pnpm dev
 | `SMTP_USER` | имя пользователя SMTP |
 | `SMTP_PASSWORD` | пароль приложения или пароль SMTP |
 | `SMTP_FROM` | подтверждённый адрес отправителя |
+| `RESEND_API_KEY` | API-ключ Resend для отправки через HTTPS (подходит для Timeweb App Platform) |
+| `EMAIL_FROM` | подтверждённый в Resend адрес отправителя |
 | `ADMIN_NAME` | имя первого администратора для seed |
 | `ADMIN_EMAIL` | email первого администратора для seed |
 | `ADMIN_PASSWORD` | пароль первого администратора для seed |
