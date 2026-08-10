@@ -25,10 +25,10 @@ export async function POST(request: NextRequest) {
     try {
       await Promise.all([
         checkRateLimit(`password-reset:ip:${opaqueIdentifier(context.ipAddress)}`, 5, 15 * 60),
-        checkRateLimit(`password-reset:email:${opaqueIdentifier(email)}`, 3, 60 * 60),
+        checkRateLimit(`password-reset:email:${opaqueIdentifier(email)}`, 3, 15 * 60),
       ]);
     } catch {
-      throw new ApiError(429, "Слишком много запросов. Повторите позже");
+      throw new ApiError(429, "Слишком много запросов. Повторите через 15 минут");
     }
 
     const user = await db.user.findUnique({ where: { email } });

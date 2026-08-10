@@ -39,7 +39,10 @@ export async function checkRateLimit(key: string, limit: number, windowSeconds: 
   const expiresAt = new Date(now.getTime() + windowSeconds * 1_000);
   const bucket = await db.$transaction(async (tx) => {
     const current = await tx.rateLimitBucket.findUnique({ where: { key } });
-    if (!current || current.expiresAt <= now) {
+    const currentWindowSeconds = current
+      ? Math.round((current.expiresAt.getTime() - current.windowStart.getTime()) / 1_000)
+      : null;
+    if (!current || current.expiresAt <= now || currentWindowSeconds !== windowSeconds) {
       return tx.rateLimitBucket.upsert({
         where: { key },
         update: { count: 1, windowStart: now, expiresAt },
