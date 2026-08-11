@@ -37,6 +37,7 @@ input,select,textarea { width:100%; margin-top:7px; border:1px solid #d6ddd9; ba
 input:focus,select:focus,textarea:focus { border-color:#78915c; box-shadow:0 0 0 3px #eaf7c4; }
 textarea { min-height:70px; resize:vertical; }
 .wide { grid-column:span 2; }
+.field-hint { display:block; margin-top:6px; color:#8a938f; font-size:9px; font-weight:500; letter-spacing:0; }
 .products { padding-bottom:18px; }
 .product { border-top:1px solid var(--line); padding:22px 0; }
 .product-head { display:grid; grid-template-columns:38px minmax(190px,360px) 1fr; align-items:center; gap:12px; margin-bottom:18px; }

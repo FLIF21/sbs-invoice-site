@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { downloadInvoiceExcel } from "@/app/excel-export";
 import { calculateQuote } from "@/lib/domain/pricing";
 import type { InvoiceDocument, ProductDimensions, PublicCatalog, QuoteItemInput } from "@/lib/domain/types";
@@ -20,10 +20,18 @@ type EditableDimensions = Omit<ProductDimensions, "width" | "height" | "width2" 
   area?: NumericValue;
 };
 type EditableItem = { id: number; productCode: string; thicknessCode: string; quantity: NumericValue; dimensions: EditableDimensions };
+type ClientDetails = { name: string; inn: string; kpp: string; address: string; phone: string; email: string };
 
 const rub = (value: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB" }).format(value);
 const num = (value: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 }).format(value);
 const numericInput = (value: string): NumericValue => value.replace(",", ".");
+const recentClientsKey = "sbs-recent-clients-v1";
+
+function isClientDetails(value: unknown): value is ClientDetails {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return ["name", "inn", "kpp", "address", "phone", "email"].every((key) => typeof candidate[key] === "string");
+}
 
 function makeItem(catalog: PublicCatalog, id: number, productCode = catalog.products[0]?.code): EditableItem {
   const product = catalog.products.find((candidate) => candidate.code === productCode) ?? catalog.products[0];
@@ -74,10 +82,23 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
     applicant: "",
     notes: "",
   });
-  const [client, setClient] = useState({ name: "", inn: "", kpp: "", address: "", phone: "", email: "" });
+  const [client, setClient] = useState<ClientDetails>({ name: "", inn: "", kpp: "", address: "", phone: "", email: "" });
+  const [recentClients, setRecentClients] = useState<ClientDetails[]>([]);
   const [savedInvoice, setSavedInvoice] = useState<InvoiceDocument | null>(null);
   const [busy, setBusy] = useState<"pdf" | "excel" | null>(null);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = JSON.parse(localStorage.getItem(recentClientsKey) ?? "[]") as unknown;
+        if (Array.isArray(stored)) setRecentClients(stored.filter(isClientDetails).slice(0, 12));
+      } catch {
+        localStorage.removeItem(recentClientsKey);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const calculation = useMemo(() => {
     try {
@@ -96,6 +117,20 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
   };
   const updateMeta = (patch: Partial<typeof meta>) => { invalidate(); setMeta((current) => ({ ...current, ...patch })); };
   const updateClient = (patch: Partial<typeof client>) => { invalidate(); setClient((current) => ({ ...current, ...patch })); };
+  const updateClientFromSuggestion = (field: "name" | "inn", value: string) => {
+    const normalized = value.trim().toLocaleLowerCase("ru-RU");
+    const saved = recentClients.find((item) => item[field].trim().toLocaleLowerCase("ru-RU") === normalized);
+    updateClient(saved ?? { [field]: value });
+  };
+  const rememberClient = () => {
+    const saved = Object.fromEntries(Object.entries(client).map(([key, value]) => [key, value.trim()])) as ClientDetails;
+    const identity = saved.inn || saved.name.toLocaleLowerCase("ru-RU");
+    setRecentClients((current) => {
+      const next = [saved, ...current.filter((item) => (item.inn || item.name.toLocaleLowerCase("ru-RU")) !== identity)].slice(0, 12);
+      try { localStorage.setItem(recentClientsKey, JSON.stringify(next)); } catch { /* Storage may be unavailable in private mode. */ }
+      return next;
+    });
+  };
   const updateItem = (id: number, patch: Partial<EditableItem>) => {
     invalidate();
     setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
@@ -118,6 +153,7 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
     });
     const result = await response.json() as InvoiceDocument & { error?: string };
     if (!response.ok) throw new Error(result.error || "Не удалось сформировать счёт");
+    rememberClient();
     setSavedInvoice(result);
     setMessage(`Счёт № ${result.number} сохранён`);
     return result;
@@ -170,14 +206,16 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
           <label>Дата<input type="date" value={meta.issueDate} onChange={(event) => updateMeta({ issueDate: event.target.value })} /></label>
           <label>Проект<input placeholder="Название или шифр" value={meta.project} onChange={(event) => updateMeta({ project: event.target.value })} /></label>
           <label>№ заявки<input placeholder="Например, 260166" value={meta.requestNumber} onChange={(event) => updateMeta({ requestNumber: event.target.value })} /></label>
-          <label className="wide">Покупатель<input placeholder="Название организации" value={client.name} onChange={(event) => updateClient({ name: event.target.value })} /></label>
-          <label>ИНН<input inputMode="numeric" value={client.inn} onChange={(event) => updateClient({ inn: event.target.value })} /></label>
+          <label className="wide">Покупатель<input list="recent-client-names" autoComplete="organization" placeholder="Название организации" value={client.name} onChange={(event) => updateClientFromSuggestion("name", event.target.value)} />{recentClients.length > 0 && <small className="field-hint">Выберите ранее сохранённые реквизиты из подсказки</small>}</label>
+          <label>ИНН<input list="recent-client-inns" inputMode="numeric" value={client.inn} onChange={(event) => updateClientFromSuggestion("inn", event.target.value)} /></label>
           <label>КПП<input inputMode="numeric" value={client.kpp} onChange={(event) => updateClient({ kpp: event.target.value })} /></label>
           <label className="wide">Адрес<input value={client.address} onChange={(event) => updateClient({ address: event.target.value })} /></label>
           <label>Телефон<input type="tel" value={client.phone} onChange={(event) => updateClient({ phone: event.target.value })} /></label>
           <label>Email<input type="email" value={client.email} onChange={(event) => updateClient({ email: event.target.value })} /></label>
           <label>Заявитель<input placeholder="ФИО" value={meta.applicant} onChange={(event) => updateMeta({ applicant: event.target.value })} /></label>
           <label>Требуется к<input type="date" value={meta.dueDate} onChange={(event) => updateMeta({ dueDate: event.target.value })} /></label>
+          <datalist id="recent-client-names">{recentClients.map((item) => <option key={`${item.inn}-${item.name}`} value={item.name}>{item.inn ? `ИНН ${item.inn}` : item.address}</option>)}</datalist>
+          <datalist id="recent-client-inns">{recentClients.filter((item) => item.inn).map((item) => <option key={`${item.inn}-${item.name}`} value={item.inn}>{item.name}</option>)}</datalist>
         </div>
       </div>
 
