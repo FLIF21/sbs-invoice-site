@@ -66,6 +66,10 @@ describe("calculateArea", () => {
   it("умножает площадь единицы на количество", () => {
     expect(calculateArea("RECTANGULAR_DUCT", { width: 400, height: 250, length: 1500 }, 3)).toBe(5.85);
   });
+
+  it("корректно считает площадь партии из 1 000 000 изделий", () => {
+    expect(calculateArea("RECTANGULAR_DUCT", { width: 400, height: 250, length: 1500 }, 1_000_000)).toBe(1_950_000);
+  });
 });
 
 describe("formatInvoiceNumber", () => {

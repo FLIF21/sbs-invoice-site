@@ -3,10 +3,16 @@ import { z } from "zod";
 const optionalText = z.string().trim().max(1_000).optional().default("");
 const dimension = z.number().finite().positive().max(1_000_000).optional();
 
+// The database stores quantity as Decimal(18,3). This guard stays well inside
+// that boundary while allowing large production batches.
+export const MAX_INVOICE_ITEM_QUANTITY = 1_000_000_000;
+
 export const quoteItemSchema = z.object({
   productCode: z.string().trim().min(1).max(80),
   thicknessCode: z.string().trim().min(1).max(20),
-  quantity: z.number().finite().positive().max(100_000),
+  quantity: z.number().finite().positive().max(MAX_INVOICE_ITEM_QUANTITY, {
+    message: "не должно превышать 1 000 000 000",
+  }),
   dimensions: z.object({
     width: dimension,
     height: dimension,

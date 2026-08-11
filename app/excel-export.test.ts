@@ -15,6 +15,7 @@ const outputDirectory = path.join(
 );
 const outputPath = path.join(outputDirectory, "sbs-invoice-format-test.xlsx");
 const largeOutputPath = path.join(outputDirectory, "sbs-invoice-57-items-test.xlsx");
+const millionItemsOutputPath = path.join(outputDirectory, "sbs-invoice-million-items-test.xlsx");
 const generatedAt = new Date(2026, 7, 11, 14, 35, 0);
 
 const fixture: InvoiceExcelData = {
@@ -74,6 +75,28 @@ function expectFormula(
   expect(typeof value.result).toBe("number");
   expect(value.result as number).toBeCloseTo(result, 8);
 }
+
+it("формирует Excel для количества 1 000 000", async () => {
+  const total = 1_448_090_000;
+  const millionItemsFixture: InvoiceExcelData = {
+    ...fixture,
+    rows: [{ ...fixture.rows[0], qty: 1_000_000, area: 1_950_000, total }],
+    subtotal: 1_186_959_016.39,
+    vat: 261_130_983.61,
+    total,
+  };
+
+  const workbook = await generateWorkbook(millionItemsFixture, millionItemsOutputPath);
+  const sheet = workbook.getWorksheet("Счёт");
+  if (!sheet) throw new Error("Лист «Счёт» не найден");
+
+  expect(sheet.getCell("F33").value).toBe(1_000_000);
+  expect(sheet.getCell("F33").numFmt).toBe(EXCEL_NUMBER_FORMATS.integer);
+  expect(sheet.getCell("G33").value).toBe(1_950_000);
+  expect(sheet.getCell("G33").numFmt).toBe(EXCEL_NUMBER_FORMATS.area);
+  expectFormula(sheet.getCell("J33"), "G33*H33", total);
+  expectFormula(sheet.getCell("J34"), "SUM(J33:J33)", total);
+});
 
 describe("генерация Excel-счёта", () => {
   it("формирует счёт с 57 позициями без повторного объединения ячеек", async () => {
