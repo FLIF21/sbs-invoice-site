@@ -34,9 +34,9 @@ export function calculateArea(method: string, dimensions: ProductDimensions, qua
     }
     case "RECTANGULAR_TRANSITION": {
       const a = positive(width, "Ширина A");
-      const b = positive(height, "Высота B");
+      const b = positive(height, "Ширина B");
       const a2 = positive(dimensions.width2, "Ширина A₂");
-      const b2 = positive(dimensions.height2, "Высота B₂");
+      const b2 = positive(dimensions.height2, "Ширина B₂");
       const l = positive(length, "Длина");
       const averagePerimeter = (2 * (a + b) + 2 * (a2 + b2)) / 2;
       const slant = Math.sqrt(l ** 2 + ((Math.hypot(a, b) - Math.hypot(a2, b2)) / 2) ** 2);
@@ -75,8 +75,8 @@ function boundaryFor(method: string, dimensions: ProductDimensions) {
     return 2 * (positive(dimensions.width, "Ширина") + positive(dimensions.height, "Высота"));
   }
   if (method === "RECTANGULAR_TRANSITION") {
-    return positive(dimensions.width, "Ширина A") + positive(dimensions.height, "Высота B")
-      + positive(dimensions.width2, "Ширина A₂") + positive(dimensions.height2, "Высота B₂");
+    return positive(dimensions.width, "Ширина A") + positive(dimensions.height, "Ширина B")
+      + positive(dimensions.width2, "Ширина A₂") + positive(dimensions.height2, "Ширина B₂");
   }
   return 0;
 }

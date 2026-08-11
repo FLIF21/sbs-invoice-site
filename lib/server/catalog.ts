@@ -26,7 +26,7 @@ export async function getCompanySnapshot(): Promise<CompanySnapshot> {
 export async function getPublicCatalog(): Promise<PublicCatalog> {
   const [products, thicknesses, coefficients, tax, company, numbering, latestRate, latestMetal] = await Promise.all([
     db.productType.findMany({
-      where: { active: true },
+      where: { active: true, code: { not: "custom" } },
       orderBy: { sortOrder: "asc" },
       include: { rates: { where: { active: true } } },
     }),

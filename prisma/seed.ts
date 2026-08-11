@@ -74,16 +74,6 @@ const productSeeds = [
     sortOrder: 50,
     tiers: [{ key: "default", gross: [3430, 2600, 2390] }],
   },
-  {
-    code: "custom",
-    name: "Нестандартное изделие",
-    category: "Нестандартные изделия",
-    imagePath: "/products/duct.png",
-    defaultDimensions: { area: 1 },
-    calculationMethod: CalculationMethod.CUSTOM_AREA,
-    sortOrder: 60,
-    tiers: [{ key: "default", gross: [1650, 1850, 2150] }],
-  },
 ] as const;
 
 const coefficientSeeds = [
@@ -164,6 +154,11 @@ async function seed() {
       }
     }
   }
+
+  await prisma.productType.updateMany({
+    where: { code: "custom" },
+    data: { active: false },
+  });
 
   for (const coefficient of coefficientSeeds) {
     await prisma.coefficient.upsert({

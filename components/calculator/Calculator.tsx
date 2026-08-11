@@ -212,10 +212,10 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
                 {isCustom
                   ? <NumberField label="Площадь единицы, м²" value={item.dimensions.area} onChange={(value) => updateDimension(item.id, "area", value)} />
                   : <NumberField label={method === "ROUND_DAMPER" ? "Диаметр, мм" : "Ширина A, мм"} value={item.dimensions.width} onChange={(value) => updateDimension(item.id, "width", value)} />}
-                {hasHeight && <NumberField label="Высота B, мм" value={item.dimensions.height} onChange={(value) => updateDimension(item.id, "height", value)} />}
+                {hasHeight && <NumberField label="Ширина B, мм" value={item.dimensions.height} onChange={(value) => updateDimension(item.id, "height", value)} />}
                 {isTransition && <>
                   <NumberField label="Ширина A₂, мм" value={item.dimensions.width2} onChange={(value) => updateDimension(item.id, "width2", value)} />
-                  <NumberField label="Высота B₂, мм" value={item.dimensions.height2} onChange={(value) => updateDimension(item.id, "height2", value)} />
+                  <NumberField label="Ширина B₂, мм" value={item.dimensions.height2} onChange={(value) => updateDimension(item.id, "height2", value)} />
                 </>}
                 {!isElbow && !isCustom && <NumberField label="Длина L, мм" value={item.dimensions.length} onChange={(value) => updateDimension(item.id, "length", value)} />}
                 {isElbow && <>
