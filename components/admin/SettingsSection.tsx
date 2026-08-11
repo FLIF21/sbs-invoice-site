@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useRef, useState } from "react";
+import { missingCompanyPaymentDetails } from "@/lib/domain/company";
 import type { SectionProps } from "./AdminConsole";
 import { adminRequest, jsonRequest } from "./admin-api";
 
@@ -33,6 +34,7 @@ export function SettingsSection({ section, data, onSaved }: Props) {
   </section>;
 
   if (section === "company") {
+    const missingPaymentDetails = missingCompanyPaymentDetails(company);
     const fields: Array<[keyof typeof company, string]> = [
       ["name", "Короткое название"], ["legalName", "Название компании"], ["inn", "ИНН"], ["kpp", "КПП"], ["ogrn", "ОГРН"],
       ["bankName", "Банк"], ["bik", "БИК"], ["checking", "Расчётный счёт"], ["correspondent", "Корреспондентский счёт"],
@@ -43,6 +45,7 @@ export function SettingsSection({ section, data, onSaved }: Props) {
       <div className="company-layout">
         <form className="admin-form-grid" onSubmit={(event) => { event.preventDefault(); void run(async () => { const payload = { name: company.name, legalName: company.legalName, inn: company.inn, kpp: company.kpp, ogrn: company.ogrn, bankName: company.bankName, bik: company.bik, checking: company.checking, correspondent: company.correspondent, address: company.address, phone: company.phone, email: company.email, website: company.website }; await adminRequest("/api/admin/settings/company", jsonRequest("PUT", payload)); await onSaved("Реквизиты сохранены"); }); }}>
           {fields.map(([key, label]) => <label className={key === "legalName" || key === "address" || key === "bankName" ? "span-2" : ""} key={key}>{label}<input value={company[key] ?? ""} onChange={(event) => setCompany((value) => ({ ...value, [key]: event.target.value }))} /></label>)}
+          {missingPaymentDetails.length > 0 && <div className="admin-alert warning span-2"><strong>PDF для оплаты пока нельзя сформировать.</strong><br />Заполните обязательные реквизиты: {missingPaymentDetails.join(", ")}.</div>}
           {error && <div className="admin-alert error span-2">{error}</div>}
           <button className="primary-button span-2" disabled={busy}>{busy ? "Сохраняем…" : "Сохранить реквизиты"}</button>
         </form>
