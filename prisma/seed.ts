@@ -60,7 +60,7 @@ const productSeeds = [
     category: "Фасонные изделия",
     imagePath: "/products/transition.png",
     defaultDimensions: { width: 400, height: 250, diameter: 300, length: 1000, rail: "20/20" },
-    calculationMethod: CalculationMethod.RECTANGULAR_TO_ROUND_TRANSITION,
+    calculationMethod: CalculationMethod.RECTANGULAR_TRANSITION,
     sortOrder: 35,
     tiers: [
       { key: "up-to-1200", max: 1200, gross: [2171.81, 1965.85, 2109.61] },

@@ -52,7 +52,7 @@ describe("calculateArea", () => {
   });
 
   it("считает переход прямоугольный → круглый по наклонной длине", () => {
-    expect(calculateArea("RECTANGULAR_TO_ROUND_TRANSITION", { width: 400, height: 250, diameter: 300, length: 1000 }, 1)).toBe(1.1239);
+    expect(calculateArea("RECTANGULAR_TRANSITION", { width: 400, height: 250, diameter: 300, length: 1000 }, 1)).toBe(1.1239);
   });
 
   it("считает круглый дроссель как цилиндр и один торец", () => {

@@ -227,8 +227,8 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
           const method = product.calculationMethod;
           const line = calculation.quote.lines[index];
           const hasHeight = method !== "ROUND_DAMPER" && method !== "CUSTOM_AREA";
-          const isRectangularTransition = method === "RECTANGULAR_TRANSITION";
-          const isRoundTransition = method === "RECTANGULAR_TO_ROUND_TRANSITION";
+          const isRoundTransition = method === "RECTANGULAR_TRANSITION" && typeof product.defaultDimensions.diameter === "number";
+          const isRectangularTransition = method === "RECTANGULAR_TRANSITION" && !isRoundTransition;
           const isElbow = method === "RECTANGULAR_ELBOW";
           const isCustom = method === "CUSTOM_AREA";
           return <article className="product" key={item.id}>
