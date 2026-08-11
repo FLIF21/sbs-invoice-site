@@ -2,6 +2,7 @@ export type CalculationMethod =
   | "RECTANGULAR_DUCT"
   | "RECTANGULAR_ELBOW"
   | "RECTANGULAR_TRANSITION"
+  | "RECTANGULAR_TO_ROUND_TRANSITION"
   | "ROUND_DAMPER"
   | "RECTANGULAR_DAMPER"
   | "CUSTOM_AREA";
@@ -11,6 +12,7 @@ export type ProductDimensions = {
   height?: number;
   width2?: number;
   height2?: number;
+  diameter?: number;
   length?: number;
   radius?: number;
   angle?: number;

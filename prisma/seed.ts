@@ -42,12 +42,26 @@ const productSeeds = [
   },
   {
     code: "transition",
-    name: "Переход",
+    name: "Переход прямоугольный → прямоугольный",
     category: "Фасонные изделия",
     imagePath: "/products/transition.png",
     defaultDimensions: { width: 400, height: 250, width2: 300, height2: 200, length: 1000, rail: "20/20" },
     calculationMethod: CalculationMethod.RECTANGULAR_TRANSITION,
     sortOrder: 30,
+    tiers: [
+      { key: "up-to-1200", max: 1200, gross: [2171.81, 1965.85, 2109.61] },
+      { key: "1200-to-3200", min: 1200, max: 3200, gross: [1770.34, 1801.26, 1988.32] },
+      { key: "over-3200", min: 3200, gross: [3116.02, 2611.73, 2734.72] },
+    ],
+  },
+  {
+    code: "transitionRound",
+    name: "Переход прямоугольный → круглый",
+    category: "Фасонные изделия",
+    imagePath: "/products/transition.png",
+    defaultDimensions: { width: 400, height: 250, diameter: 300, length: 1000, rail: "20/20" },
+    calculationMethod: CalculationMethod.RECTANGULAR_TO_ROUND_TRANSITION,
+    sortOrder: 35,
     tiers: [
       { key: "up-to-1200", max: 1200, gross: [2171.81, 1965.85, 2109.61] },
       { key: "1200-to-3200", min: 1200, max: 3200, gross: [1770.34, 1801.26, 1988.32] },
@@ -116,7 +130,15 @@ async function seed() {
   for (const productSeed of productSeeds) {
     const product = await prisma.productType.upsert({
       where: { code: productSeed.code },
-      update: {},
+      update: {
+        name: productSeed.name,
+        category: productSeed.category,
+        imagePath: productSeed.imagePath,
+        defaultDimensions: productSeed.defaultDimensions,
+        calculationMethod: productSeed.calculationMethod,
+        sortOrder: productSeed.sortOrder,
+        active: true,
+      },
       create: {
         code: productSeed.code,
         name: productSeed.name,

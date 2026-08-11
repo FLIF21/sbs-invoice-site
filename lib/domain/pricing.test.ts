@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateQuote, formatInvoiceNumber } from "./pricing";
+import { calculateArea, calculateQuote, formatInvoiceNumber } from "./pricing";
 import type { PublicCatalog } from "./types";
 
 const catalog: PublicCatalog = {
@@ -35,6 +35,36 @@ describe("calculateQuote", () => {
     const quote = calculateQuote([{ productCode: "duct", thicknessCode: "0.5", quantity: 1, dimensions: { width: 400, height: 250, length: 1500 } }], { ...catalog, tax: { enabled: false, rate: 25 } });
     expect(quote.taxAmount).toBe(0);
     expect(quote.total).toBe(quote.subtotal);
+  });
+});
+
+describe("calculateArea", () => {
+  it("использует длину 1500 мм для воздуховода, если L не указана", () => {
+    expect(calculateArea("RECTANGULAR_DUCT", { width: 400, height: 250 }, 1)).toBe(1.95);
+  });
+
+  it("считает прямоугольный отвод по средней линии радиуса", () => {
+    expect(calculateArea("RECTANGULAR_ELBOW", { width: 400, height: 250, radius: 100, angle: 90 }, 1)).toBe(0.6126);
+  });
+
+  it("считает переход прямоугольный → прямоугольный по наклонной длине", () => {
+    expect(calculateArea("RECTANGULAR_TRANSITION", { width: 400, height: 250, width2: 300, height2: 200, length: 1000 }, 1)).toBe(1.1518);
+  });
+
+  it("считает переход прямоугольный → круглый по наклонной длине", () => {
+    expect(calculateArea("RECTANGULAR_TO_ROUND_TRANSITION", { width: 400, height: 250, diameter: 300, length: 1000 }, 1)).toBe(1.1239);
+  });
+
+  it("считает круглый дроссель как цилиндр и один торец", () => {
+    expect(calculateArea("ROUND_DAMPER", { width: 300, length: 300 }, 1)).toBe(0.3534);
+  });
+
+  it("считает прямоугольный дроссель как боковую поверхность и одну сторону", () => {
+    expect(calculateArea("RECTANGULAR_DAMPER", { width: 400, height: 250, length: 300 }, 1)).toBe(0.49);
+  });
+
+  it("умножает площадь единицы на количество", () => {
+    expect(calculateArea("RECTANGULAR_DUCT", { width: 400, height: 250, length: 1500 }, 3)).toBe(5.85);
   });
 });
 

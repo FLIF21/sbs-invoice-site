@@ -9,11 +9,12 @@ import type { InvoiceDocument, ProductDimensions, PublicCatalog, QuoteItemInput 
 import { downloadInvoicePdf } from "@/lib/client/pdf-export";
 
 type NumericValue = number | string;
-type EditableDimensions = Omit<ProductDimensions, "width" | "height" | "width2" | "height2" | "length" | "radius" | "angle" | "area"> & {
+type EditableDimensions = Omit<ProductDimensions, "width" | "height" | "width2" | "height2" | "diameter" | "length" | "radius" | "angle" | "area"> & {
   width?: NumericValue;
   height?: NumericValue;
   width2?: NumericValue;
   height2?: NumericValue;
+  diameter?: NumericValue;
   length?: NumericValue;
   radius?: NumericValue;
   angle?: NumericValue;
@@ -226,7 +227,8 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
           const method = product.calculationMethod;
           const line = calculation.quote.lines[index];
           const hasHeight = method !== "ROUND_DAMPER" && method !== "CUSTOM_AREA";
-          const isTransition = method === "RECTANGULAR_TRANSITION";
+          const isRectangularTransition = method === "RECTANGULAR_TRANSITION";
+          const isRoundTransition = method === "RECTANGULAR_TO_ROUND_TRANSITION";
           const isElbow = method === "RECTANGULAR_ELBOW";
           const isCustom = method === "CUSTOM_AREA";
           return <article className="product" key={item.id}>
@@ -249,12 +251,13 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
               <div className="item-grid">
                 {isCustom
                   ? <NumberField label="Площадь единицы, м²" value={item.dimensions.area} onChange={(value) => updateDimension(item.id, "area", value)} />
-                  : <NumberField label={method === "ROUND_DAMPER" ? "Диаметр, мм" : "Ширина A, мм"} value={item.dimensions.width} onChange={(value) => updateDimension(item.id, "width", value)} />}
+                  : <NumberField label={method === "ROUND_DAMPER" ? "Диаметр D, мм" : "Ширина A, мм"} value={item.dimensions.width} onChange={(value) => updateDimension(item.id, "width", value)} />}
                 {hasHeight && <NumberField label="Ширина B, мм" value={item.dimensions.height} onChange={(value) => updateDimension(item.id, "height", value)} />}
-                {isTransition && <>
+                {isRectangularTransition && <>
                   <NumberField label="Ширина A₂, мм" value={item.dimensions.width2} onChange={(value) => updateDimension(item.id, "width2", value)} />
                   <NumberField label="Ширина B₂, мм" value={item.dimensions.height2} onChange={(value) => updateDimension(item.id, "height2", value)} />
                 </>}
+                {isRoundTransition && <NumberField label="Диаметр D, мм" value={item.dimensions.diameter} onChange={(value) => updateDimension(item.id, "diameter", value)} />}
                 {!isElbow && !isCustom && <NumberField label="Длина L, мм" value={item.dimensions.length} onChange={(value) => updateDimension(item.id, "length", value)} />}
                 {isElbow && <>
                   <NumberField label="Угол, °" value={item.dimensions.angle} onChange={(value) => updateDimension(item.id, "angle", value)} />

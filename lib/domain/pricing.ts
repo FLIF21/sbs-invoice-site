@@ -24,6 +24,13 @@ export function calculateArea(method: string, dimensions: ProductDimensions, qua
   let unitArea: number;
 
   switch (method) {
+    case "RECTANGULAR_DUCT": {
+      const a = positive(width, "Ширина A");
+      const b = positive(height, "Ширина B");
+      const l = positive(length ?? 1500, "Длина L");
+      unitArea = 2 * (a + b) * l / 1_000_000;
+      break;
+    }
     case "RECTANGULAR_ELBOW": {
       const a = positive(width, "Ширина");
       const b = positive(height, "Высота");
@@ -40,6 +47,17 @@ export function calculateArea(method: string, dimensions: ProductDimensions, qua
       const l = positive(length, "Длина");
       const averagePerimeter = (2 * (a + b) + 2 * (a2 + b2)) / 2;
       const slant = Math.sqrt(l ** 2 + ((Math.hypot(a, b) - Math.hypot(a2, b2)) / 2) ** 2);
+      unitArea = averagePerimeter * slant / 1_000_000;
+      break;
+    }
+    case "RECTANGULAR_TO_ROUND_TRANSITION": {
+      const a = positive(width, "Ширина A");
+      const b = positive(height, "Ширина B");
+      const diameter = positive(dimensions.diameter, "Диаметр D");
+      const l = positive(length, "Длина L");
+      const averagePerimeter = (2 * (a + b) + Math.PI * diameter) / 2;
+      const roundCalculationSize = Math.PI * diameter / (2 * Math.SQRT2);
+      const slant = Math.sqrt(l ** 2 + ((Math.hypot(a, b) - roundCalculationSize) / 2) ** 2);
       unitArea = averagePerimeter * slant / 1_000_000;
       break;
     }
@@ -78,10 +96,19 @@ function boundaryFor(method: string, dimensions: ProductDimensions) {
     return positive(dimensions.width, "Ширина A") + positive(dimensions.height, "Ширина B")
       + positive(dimensions.width2, "Ширина A₂") + positive(dimensions.height2, "Ширина B₂");
   }
+  if (method === "RECTANGULAR_TO_ROUND_TRANSITION") {
+    return positive(dimensions.width, "Ширина A") + positive(dimensions.height, "Ширина B")
+      + Math.PI * positive(dimensions.diameter, "Диаметр D") / 2;
+  }
   return 0;
 }
 
 function description(name: string, method: string, dimensions: ProductDimensions, thickness: string) {
+  if (method === "RECTANGULAR_TO_ROUND_TRANSITION") {
+    const transitionRail = dimensions.rail ? `; ш${dimensions.rail}` : "";
+    const transitionMetal = `оц.${thickness.replace(".", ",")}`;
+    return `${name} ${dimensions.width}×${dimensions.height}/D${dimensions.diameter} L${dimensions.length} (${transitionMetal}${transitionRail})`;
+  }
   const rail = dimensions.rail ? `; ш${dimensions.rail}` : "";
   const metal = `оц.${thickness.replace(".", ",")}`;
   if (method === "ROUND_DAMPER") return `${name} D${dimensions.width} L${dimensions.length} (${metal})`;

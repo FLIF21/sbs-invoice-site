@@ -12,6 +12,7 @@ export const quoteItemSchema = z.object({
     height: dimension,
     width2: dimension,
     height2: dimension,
+    diameter: dimension,
     length: dimension,
     radius: dimension,
     angle: z.number().finite().positive().max(360).optional(),
