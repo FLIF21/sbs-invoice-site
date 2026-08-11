@@ -190,8 +190,12 @@ export async function buildInvoiceExcelBuffer(
   const totalRow = 33 + data.rows.length;
   const lastTouchedRow = Math.max(38, totalRow);
 
-  for (let rowNumber = 32; rowNumber <= 38; rowNumber += 1) {
-    for (const range of [`C${rowNumber}:E${rowNumber}`, `H${rowNumber}:I${rowNumber}`]) {
+  for (let rowNumber = headerRow; rowNumber <= lastTouchedRow; rowNumber += 1) {
+    for (const range of [
+      `C${rowNumber}:E${rowNumber}`,
+      `H${rowNumber}:I${rowNumber}`,
+      `J${rowNumber}:L${rowNumber}`,
+    ]) {
       const cell = sheet.getCell(range.split(":")[0]);
       if (cell.isMerged) sheet.unMergeCells(range);
     }

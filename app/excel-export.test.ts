@@ -11,9 +11,10 @@ import {
 const outputDirectory = path.join(
   process.cwd(),
   "outputs",
-  "excel-format-fix-20260811",
+  "excel-large-invoice-fix-20260811",
 );
 const outputPath = path.join(outputDirectory, "sbs-invoice-format-test.xlsx");
+const largeOutputPath = path.join(outputDirectory, "sbs-invoice-57-items-test.xlsx");
 const generatedAt = new Date(2026, 7, 11, 14, 35, 0);
 
 const fixture: InvoiceExcelData = {
@@ -43,7 +44,10 @@ const fixture: InvoiceExcelData = {
   companyName: "ООО «ФЮСИС-В»",
 };
 
-async function generateWorkbook() {
+async function generateWorkbook(
+  data: InvoiceExcelData = fixture,
+  targetPath = outputPath,
+) {
   const template = await readFile(
     path.join(process.cwd(), "public", "invoice-template.xlsx"),
   );
@@ -51,9 +55,9 @@ async function generateWorkbook() {
     template.byteOffset,
     template.byteOffset + template.byteLength,
   ) as ArrayBuffer;
-  const output = await buildInvoiceExcelBuffer(fixture, templateBuffer, generatedAt);
+  const output = await buildInvoiceExcelBuffer(data, templateBuffer, generatedAt);
   await mkdir(outputDirectory, { recursive: true });
-  await writeFile(outputPath, Buffer.from(output));
+  await writeFile(targetPath, Buffer.from(output));
 
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(output);
@@ -65,10 +69,46 @@ function expectFormula(
   formula: string,
   result: number,
 ) {
-  expect(cell.value).toMatchObject({ formula, result });
+  const value = cell.value as { formula?: string; result?: unknown };
+  expect(value.formula).toBe(formula);
+  expect(typeof value.result).toBe("number");
+  expect(value.result as number).toBeCloseTo(result, 8);
 }
 
 describe("генерация Excel-счёта", () => {
+  it("формирует счёт с 57 позициями без повторного объединения ячеек", async () => {
+    const rows = Array.from({ length: 57 }, (_, index) => ({
+      description: `Позиция ${index + 1}`,
+      qty: 1,
+      area: 1.95,
+      rate: 742.6102564102564,
+      total: 1448.09,
+    }));
+    const largeFixture: InvoiceExcelData = {
+      ...fixture,
+      rows,
+      subtotal: 1186.96 * rows.length,
+      vat: 261.13 * rows.length,
+      total: 1448.09 * rows.length,
+    };
+
+    const workbook = await generateWorkbook(largeFixture, largeOutputPath);
+    const sheet = workbook.getWorksheet("Счёт");
+    if (!sheet) throw new Error("Лист «Счёт» не найден");
+
+    expect(sheet.getCell("B33").value).toBe(1);
+    expect(sheet.getCell("B89").value).toBe(57);
+    expect(sheet.getCell("C39").master.address).toBe("C39");
+    expect(sheet.getCell("E39").master.address).toBe("C39");
+    expect(sheet.getCell("C89").master.address).toBe("C89");
+    expect(sheet.getCell("E89").master.address).toBe("C89");
+    expect(sheet.getRow(39).hidden).toBe(false);
+    expectFormula(sheet.getCell("J89"), "G89*H89", 1448.09);
+    expectFormula(sheet.getCell("G90"), "SUM(G33:G89)", 1.95 * rows.length);
+    expectFormula(sheet.getCell("J90"), "SUM(J33:J89)", 1448.09 * rows.length);
+    expectFormula(sheet.getCell("K4"), "J90", 1448.09 * rows.length);
+  });
+
   it("сохраняет семантические типы и форматы ячеек", async () => {
     const workbook = await generateWorkbook();
     const sheet = workbook.getWorksheet("Счёт");
