@@ -16,7 +16,7 @@
     "validate": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:deploy": "tsx scripts/repair-failed-migration.ts && prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio"
   },
