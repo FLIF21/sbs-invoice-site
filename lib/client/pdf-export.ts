@@ -18,9 +18,12 @@ const num = (value: number) => new Intl.NumberFormat("ru-RU", { maximumFractionD
 const date = (value: string) => new Intl.DateTimeFormat("ru-RU").format(new Date(value));
 
 function bytesToBase64(bytes: Uint8Array) {
-  let binary = "";
-  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary);
+  const chunks: string[] = [];
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + chunkSize)));
+  }
+  return btoa(chunks.join(""));
 }
 
 async function fetchBase64(url: string) {

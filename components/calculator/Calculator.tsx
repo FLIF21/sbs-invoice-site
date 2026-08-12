@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { downloadInvoiceExcel } from "@/app/excel-export";
 import { calculateQuote } from "@/lib/domain/pricing";
 import type { InvoiceDocument, ProductDimensions, PublicCatalog, QuoteItemInput } from "@/lib/domain/types";
@@ -114,7 +114,7 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
     return () => window.clearTimeout(timer);
   }, [initialCatalog]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!draftReady) return;
     try {
       sessionStorage.setItem(INVOICE_DRAFT_STORAGE_KEY, serializeInvoiceDraft({

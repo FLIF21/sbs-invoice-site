@@ -74,14 +74,16 @@ test("reload сохраняет черновик, а PDF и Excel использ
     button.click();
     button.click();
   });
-  await pdfDownload;
+  const pdfFile = await pdfDownload;
+  await pdfFile.cancel();
   await expect(page.getByText("PDF скачан. Счёт № E2E-000001")).toBeVisible();
 
   await page.reload();
   await expect(page.getByLabel("Следующий номер")).toHaveValue("E2E-000001");
   const excelDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Скачать счёт в Excel" }).click();
-  await excelDownload;
+  const excelFile = await excelDownload;
+  await excelFile.cancel();
   await expect(page.getByText("Excel скачан. Счёт № E2E-000001")).toBeVisible();
 
   expect(postRequests).toBe(1);

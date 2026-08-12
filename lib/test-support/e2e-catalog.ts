@@ -1,0 +1,43 @@
+import type { PublicCatalog } from "@/lib/domain/types";
+
+export const e2eCatalog: PublicCatalog = {
+  products: [{
+    id: "e2e-duct",
+    code: "duct",
+    name: "Воздуховод",
+    category: "Воздуховоды",
+    description: null,
+    imagePath: null,
+    defaultDimensions: { width: 400, height: 250, length: 1500, rail: "20/20" },
+    calculationMethod: "RECTANGULAR_DUCT",
+    rates: [{
+      id: "e2e-rate",
+      thicknessCode: "0.5",
+      tierKey: "default",
+      minBoundary: null,
+      maxBoundary: null,
+      materialMultiplier: 1,
+      laborCost: 250,
+    }],
+  }],
+  thicknesses: [{ id: "e2e-thickness", code: "0.5", millimeters: 0.5, label: "0,5 мм", metalCost: 350 }],
+  coefficients: [{ id: "e2e-coefficient", key: "manufacturing", name: "Изготовление", value: 1, enabled: true }],
+  tax: { enabled: true, rate: 22 },
+  company: {
+    name: "СБС",
+    legalName: "ООО «ФЮСИС-В»",
+    inn: "0000000000",
+    kpp: "000000000",
+    ogrn: null,
+    bankName: "Тестовый банк",
+    bik: "000000000",
+    checking: "40702810000000000000",
+    correspondent: "30101810000000000000",
+    address: "Тестовый адрес поставщика",
+    phone: "+7 000 000-00-00",
+    email: "test@example.com",
+    website: "sbs-schet.online",
+  },
+  invoiceNumberPreview: "E2E-000001",
+  pricesUpdatedAt: new Date(0).toISOString(),
+};
