@@ -5,9 +5,7 @@ import type {
   PublicCatalog,
   QuoteItemInput,
 } from "./types";
-
-const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-const precise = (value: number) => Math.round((value + Number.EPSILON) * 10_000) / 10_000;
+import { grossMoney, roundArea, roundMoney, roundRate, sumMoney } from "./rounding";
 
 function positive(value: number | undefined, field: string) {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
@@ -16,8 +14,14 @@ function positive(value: number | undefined, field: string) {
   return value;
 }
 
+function positiveInteger(value: number | undefined, field: string) {
+  const parsed = positive(value, field);
+  if (!Number.isInteger(parsed)) throw new Error(`Поле «${field}» должно быть целым числом не меньше 1`);
+  return parsed;
+}
+
 export function calculateArea(method: string, dimensions: ProductDimensions, quantity: number) {
-  const qty = positive(quantity, "Количество");
+  const qty = positiveInteger(quantity, "Количество");
   const width = dimensions.width;
   const height = dimensions.height;
   const length = dimensions.length;
@@ -79,7 +83,7 @@ export function calculateArea(method: string, dimensions: ProductDimensions, qua
     }
   }
 
-  return precise(unitArea * qty);
+  return roundArea(unitArea * qty);
 }
 
 function boundaryFor(method: string, dimensions: ProductDimensions) {
@@ -134,10 +138,10 @@ export function calculateQuote(items: QuoteItemInput[], catalog: PublicCatalog):
 
     const area = calculateArea(product.calculationMethod, item.dimensions, item.quantity);
     const baseNetRate = thickness.metalCost * rate.materialMultiplier + rate.laborCost;
-    const netUnitPrice = precise(baseNetRate * coefficient);
-    const grossUnitPrice = precise(netUnitPrice * taxMultiplier);
-    const netTotal = money(area * netUnitPrice);
-    const grossTotal = money(area * grossUnitPrice);
+    const netUnitPrice = roundRate(baseNetRate * coefficient);
+    const grossUnitPrice = roundRate(netUnitPrice * taxMultiplier);
+    const netTotal = roundMoney(area * netUnitPrice);
+    const grossTotal = catalog.tax.enabled ? grossMoney(netTotal, catalog.tax.rate) : netTotal;
 
     return {
       productId: product.id,
@@ -164,9 +168,12 @@ export function calculateQuote(items: QuoteItemInput[], catalog: PublicCatalog):
     };
   });
 
-  const subtotal = money(lines.reduce((sum, line) => sum + line.netTotal, 0));
-  const total = catalog.tax.enabled ? money(lines.reduce((sum, line) => sum + line.grossTotal, 0)) : subtotal;
-  return { lines, subtotal, taxAmount: money(total - subtotal), total, tax: catalog.tax };
+  const subtotal = sumMoney(lines.map((line) => line.netTotal));
+  const total = sumMoney(lines.map((line) => line.grossTotal));
+  const taxAmount = catalog.tax.enabled
+    ? sumMoney(lines.map((line) => roundMoney(line.grossTotal - line.netTotal)))
+    : 0;
+  return { lines, subtotal, taxAmount, total, tax: catalog.tax };
 }
 
 export function formatInvoiceNumber(pattern: string, value: number, year: number) {

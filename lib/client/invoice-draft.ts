@@ -30,7 +30,7 @@ export type InvoiceDraft = {
   savedInvoice: InvoiceDocument | null;
 };
 
-const numericValue = z.union([z.number().finite(), z.string().regex(/^\d*(?:\.\d*)?$/)]);
+const numericValue = z.union([z.number().finite(), z.string().max(40)]);
 const dimensionsSchema = z.object({
   width: numericValue.optional(), height: numericValue.optional(), width2: numericValue.optional(), height2: numericValue.optional(),
   diameter: numericValue.optional(), length: numericValue.optional(), radius: numericValue.optional(), angle: numericValue.optional(),

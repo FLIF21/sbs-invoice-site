@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { Prisma, type Invoice, type InvoiceItem } from "@prisma/client";
 import { calculateQuote, formatInvoiceNumber } from "@/lib/domain/pricing";
+import { grossMoney, roundMoney, roundRate } from "@/lib/domain/rounding";
 import type { InvoiceDocument, InvoiceClientData } from "@/lib/domain/types";
 import type { InvoiceInput } from "@/lib/validation/invoice";
 import { writeAudit } from "./audit";
@@ -215,27 +216,31 @@ export function serializeInvoice(invoice: InvoiceWithItems): InvoiceDocument {
     requestNumber: invoice.requestNumber,
     applicant: invoice.applicant,
     notes: invoice.notes,
-    subtotal: invoice.subtotal.toNumber(),
-    taxAmount: invoice.taxAmount.toNumber(),
-    total: invoice.total.toNumber(),
+    subtotal: roundMoney(invoice.subtotal.toNumber()),
+    taxAmount: roundMoney(invoice.taxAmount.toNumber()),
+    total: roundMoney(invoice.total.toNumber()),
     tax,
     company,
     client,
-    items: invoice.items.map((item) => ({
-      productId: item.productTypeId ?? "",
-      productCode: item.productCodeSnapshot,
-      productName: item.description.split(" ")[0] ?? item.productCodeSnapshot,
-      description: item.description,
-      dimensions: item.dimensions as InvoiceDocument["items"][number]["dimensions"],
-      thicknessCode: item.thicknessCode,
-      quantity: item.quantity.toNumber(),
-      area: item.area.toNumber(),
-      netUnitPrice: item.unitPrice.toNumber(),
-      grossUnitPrice: item.unitPrice.toNumber() * multiplier,
-      netTotal: item.total.toNumber(),
-      grossTotal: item.total.toNumber() * multiplier,
-      pricingSnapshot: {},
-    })),
+    items: invoice.items.map((item) => {
+      const netUnitPrice = roundRate(item.unitPrice.toNumber());
+      const netTotal = roundMoney(item.total.toNumber());
+      return {
+        productId: item.productTypeId ?? "",
+        productCode: item.productCodeSnapshot,
+        productName: item.description.split(" ")[0] ?? item.productCodeSnapshot,
+        description: item.description,
+        dimensions: item.dimensions as InvoiceDocument["items"][number]["dimensions"],
+        thicknessCode: item.thicknessCode,
+        quantity: item.quantity.toNumber(),
+        area: item.area.toNumber(),
+        netUnitPrice,
+        grossUnitPrice: roundRate(netUnitPrice * multiplier),
+        netTotal,
+        grossTotal: tax.enabled ? grossMoney(netTotal, tax.rate) : netTotal,
+        pricingSnapshot: {},
+      };
+    }),
   };
 }
 

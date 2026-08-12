@@ -5,8 +5,17 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { downloadInvoiceExcel } from "@/app/excel-export";
 import { calculateQuote } from "@/lib/domain/pricing";
+import { formatArea, formatRub } from "@/lib/domain/format";
 import type { InvoiceDocument, ProductDimensions, PublicCatalog, QuoteItemInput } from "@/lib/domain/types";
 import { downloadInvoicePdf } from "@/lib/client/pdf-export";
+import { invoiceDateError, todayInMoscow } from "@/lib/validation/dates";
+import {
+  MAX_ANGLE_VALUE,
+  MAX_DIMENSION_VALUE,
+  MAX_INVOICE_ITEM_QUANTITY,
+  parsePositiveDecimal,
+  parsePositiveInteger,
+} from "@/lib/validation/numeric-input";
 import {
   INVOICE_DRAFT_STORAGE_KEY,
   isMeaningfulDraft,
@@ -20,16 +29,32 @@ import {
   type NumericValue,
 } from "@/lib/client/invoice-draft";
 
-const rub = (value: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB" }).format(value);
-const num = (value: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 }).format(value);
-const numericInput = (value: string): NumericValue => value.replace(",", ".");
 const recentClientsKey = "sbs-recent-clients-v1";
 const emptyClient = (): ClientDetails => ({ name: "", inn: "", kpp: "", address: "", phone: "", email: "" });
 const emptyMeta = (): InvoiceMeta => ({
-  issueDate: new Date().toISOString().slice(0, 10), dueDate: "", project: "", requestNumber: "", applicant: "", notes: "",
+  issueDate: todayInMoscow(), dueDate: "", project: "", requestNumber: "", applicant: "", notes: "",
 });
 type ExportStage = "saving" | "pdf" | "excel" | null;
 type FormMessage = { kind: "success" | "error" | "info"; text: string } | null;
+type NumericDimensionKey = Exclude<keyof EditableDimensions, "rail">;
+type ItemFieldKey = NumericDimensionKey | "quantity";
+type ItemValidation = {
+  quoteItem: QuoteItemInput | null;
+  errors: Partial<Record<ItemFieldKey, string>>;
+  message: string;
+};
+
+const dimensionLabels: Record<NumericDimensionKey, string> = {
+  width: "Ширина A",
+  height: "Ширина B",
+  width2: "Ширина A₂",
+  height2: "Ширина B₂",
+  diameter: "Диаметр D",
+  length: "Длина L",
+  radius: "Радиус R",
+  angle: "Угол",
+  area: "Площадь единицы",
+};
 
 function isClientDetails(value: unknown): value is ClientDetails {
   if (!value || typeof value !== "object") return false;
@@ -37,43 +62,97 @@ function isClientDetails(value: unknown): value is ClientDetails {
   return ["name", "inn", "kpp", "address", "phone", "email"].every((key) => typeof candidate[key] === "string");
 }
 
-function makeItem(catalog: PublicCatalog, id: number, productCode = catalog.products[0]?.code): EditableItem {
-  const product = catalog.products.find((candidate) => candidate.code === productCode) ?? catalog.products[0];
+function blankDimensions(product: PublicCatalog["products"][number]): EditableDimensions {
+  return Object.fromEntries(Object.entries(product.defaultDimensions).map(([key, value]) => [
+    key,
+    typeof value === "number" ? "" : value,
+  ])) as EditableDimensions;
+}
+
+function makeItem(catalog: PublicCatalog, id: number, productCode?: string): EditableItem {
+  const defaultProduct = catalog.products.find((candidate) => candidate.code === "duct")
+    ?? catalog.products.find((candidate) => candidate.calculationMethod === "RECTANGULAR_DUCT")
+    ?? catalog.products[0];
+  const product = catalog.products.find((candidate) => candidate.code === productCode) ?? defaultProduct;
   if (!product || !catalog.thicknesses[0]) throw new Error("Прайс не настроен");
   return {
     id,
     productCode: product.code,
     thicknessCode: catalog.thicknesses[0].code,
     quantity: 1,
-    dimensions: { ...product.defaultDimensions },
+    dimensions: blankDimensions(product),
   };
 }
 
-function toQuoteItem(item: EditableItem): QuoteItemInput {
-  const dimensions = Object.fromEntries(
-    Object.entries(item.dimensions)
-      .filter(([, value]) => value !== "")
-      .map(([key, value]) => [key, key === "rail" ? value : Number(value)]),
-  ) as ProductDimensions;
+function requiredDimensions(product: PublicCatalog["products"][number]): NumericDimensionKey[] {
+  switch (product.calculationMethod) {
+    case "RECTANGULAR_ELBOW": return ["width", "height", "angle", "radius"];
+    case "RECTANGULAR_TRANSITION": return typeof product.defaultDimensions.diameter === "number"
+      ? ["width", "height", "diameter", "length"]
+      : ["width", "height", "width2", "height2", "length"];
+    case "ROUND_DAMPER": return ["width", "length"];
+    case "RECTANGULAR_DAMPER": return ["width", "height", "length"];
+    case "CUSTOM_AREA": return ["area"];
+    default: return ["width", "height", "length"];
+  }
+}
+
+function validateItem(item: EditableItem, product: PublicCatalog["products"][number]): ItemValidation {
+  const errors: ItemValidation["errors"] = {};
+  const dimensions: ProductDimensions = {};
+  let missingDimension = false;
+  for (const key of requiredDimensions(product)) {
+    const result = parsePositiveDecimal(item.dimensions[key], dimensionLabels[key]);
+    const maximum = key === "angle" ? MAX_ANGLE_VALUE : MAX_DIMENSION_VALUE;
+    if (result.success && result.value <= maximum) dimensions[key] = result.value;
+    else if (result.success) errors[key] = `${dimensionLabels[key]}: значение не должно превышать ${maximum.toLocaleString("ru-RU")}`;
+    else {
+      errors[key] = result.error;
+      missingDimension ||= result.missing;
+    }
+  }
+  if (item.dimensions.rail) dimensions.rail = item.dimensions.rail;
+  const quantity = parsePositiveInteger(item.quantity);
+  if (!quantity.success) errors.quantity = quantity.error;
+  else if (quantity.value > MAX_INVOICE_ITEM_QUANTITY) errors.quantity = "Количество не должно превышать 1 000 000 000";
+  const specificError = Object.values(errors).find((error) => !error.endsWith(": заполните поле"));
+  const message = specificError ?? (missingDimension ? "Заполните размеры изделия" : errors.quantity ?? "");
   return {
-    productCode: item.productCode,
-    thicknessCode: item.thicknessCode,
-    quantity: Number(item.quantity),
-    dimensions,
+    quoteItem: Object.keys(errors).length === 0 && quantity.success ? {
+      productCode: item.productCode,
+      thicknessCode: item.thicknessCode,
+      quantity: quantity.value,
+      dimensions,
+    } : null,
+    errors,
+    message,
   };
 }
 
-function NumberField({ label, value, onChange, min }: { label: string; value?: NumericValue; onChange: (value: NumericValue) => void; min?: number }) {
-  return <label>{label}<input
+function visibleFieldError(error?: string) {
+  return error?.endsWith(": заполните поле") ? undefined : error;
+}
+
+function NumberField({ id, label, value, onChange, error, integer = false }: {
+  id: string;
+  label: string;
+  value?: NumericValue;
+  onChange: (value: NumericValue) => void;
+  error?: string;
+  integer?: boolean;
+}) {
+  const errorId = `${id}-error`;
+  return <label htmlFor={id}>{label}<input
+    id={id}
     type="text"
-    inputMode="decimal"
-    data-min={min}
+    inputMode={integer ? "numeric" : "decimal"}
+    pattern={integer ? "[0-9]*" : "[0-9]+([.,][0-9]+)?"}
+    enterKeyHint="next"
+    aria-invalid={Boolean(error)}
+    aria-describedby={error ? errorId : undefined}
     value={value ?? ""}
-    onChange={(event) => {
-      const next = numericInput(event.target.value);
-      if (/^\d*(?:\.\d*)?$/.test(String(next))) onChange(next);
-    }}
-  /></label>;
+    onChange={(event) => onChange(event.target.value)}
+  />{error && <small className="field-error" id={errorId} role="alert">{error}</small>}</label>;
 }
 
 export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }) {
@@ -125,16 +204,45 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
     }
   }, [client, draftReady, items, meta, savedInvoice]);
 
+  const itemValidations = useMemo(() => items.map((item) => {
+    const product = initialCatalog.products.find((candidate) => candidate.code === item.productCode);
+    if (!product) return { quoteItem: null, errors: {}, message: "Выбранное изделие больше недоступно" } satisfies ItemValidation;
+    return validateItem(item, product);
+  }), [items, initialCatalog]);
+
   const calculation = useMemo(() => {
+    const validationError = itemValidations.find((validation) => validation.message)?.message ?? "";
+    const quoteItems = itemValidations.map((validation) => validation.quoteItem);
+    if (validationError || quoteItems.some((item) => !item)) {
+      return {
+        quote: { lines: [], subtotal: 0, taxAmount: 0, total: 0, tax: initialCatalog.tax },
+        error: validationError || "Заполните размеры изделия",
+      };
+    }
     try {
-      return { quote: calculateQuote(items.map(toQuoteItem), initialCatalog), error: "" };
+      return { quote: calculateQuote(quoteItems as QuoteItemInput[], initialCatalog), error: "" };
     } catch (error) {
       return {
         quote: { lines: [], subtotal: 0, taxAmount: 0, total: 0, tax: initialCatalog.tax },
         error: error instanceof Error ? error.message : "Проверьте размеры",
       };
     }
-  }, [items, initialCatalog]);
+  }, [itemValidations, initialCatalog]);
+
+  const today = todayInMoscow();
+  const dateError = invoiceDateError(meta.issueDate, meta.dueDate, today);
+  const issueDateError = !meta.issueDate
+    ? "Укажите дату счёта"
+    : meta.issueDate < today ? "Дата счёта не может быть в прошлом" : "";
+  const dueDateError = meta.dueDate && meta.dueDate < today
+    ? "Дата готовности не может быть в прошлом"
+    : meta.dueDate && meta.dueDate < meta.issueDate ? "Дата готовности не может быть раньше даты счёта" : "";
+  const clientError = client.name.trim().length < 2 ? "Укажите название покупателя" : "";
+  const clientFieldError = calculation.error ? "" : clientError;
+  const formError = savedInvoice ? "" : calculation.error || dateError || clientError;
+  const canExport = Boolean(savedInvoice) || (!formError
+    && calculation.quote.lines.length === items.length
+    && calculation.quote.total > 0);
 
   const invalidate = () => {
     idempotencyKeyRef.current = newIdempotencyKey();
@@ -170,13 +278,17 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
 
   async function ensureInvoice() {
     if (savedInvoice) return savedInvoice;
-    if (calculation.error) throw new Error(calculation.error);
-    if (!client.name.trim()) throw new Error("Укажите название покупателя");
+    if (!canExport) throw new Error(formError || "Заполните обязательные поля");
     setExportStage("saving");
     const response = await fetch("/api/public/invoices", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idempotencyKey: idempotencyKeyRef.current, ...meta, client, items: items.map(toQuoteItem) }),
+      body: JSON.stringify({
+        idempotencyKey: idempotencyKeyRef.current,
+        ...meta,
+        client,
+        items: itemValidations.map((validation) => validation.quoteItem),
+      }),
     });
     const result = await response.json() as InvoiceDocument & { error?: string };
     if (!response.ok) throw new Error(result.error || "Не удалось сформировать счёт");
@@ -249,11 +361,11 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
         <p className="lead">Заполните реквизиты, добавьте изделия — площадь, цена и итог пересчитаются автоматически.</p>
       </div>
       <div className="total-card">
-        <span>К оплате</span><strong>{rub(calculation.quote.total)}</strong>
+        <span>К оплате</span><strong>{formatRub(calculation.quote.total)}</strong>
         <small>{initialCatalog.tax.enabled ? `включая НДС ${initialCatalog.tax.rate}%` : "без НДС"} · {items.length} поз.</small>
         <div className="export-actions">
-          <button onClick={() => exportInvoice("pdf")} disabled={Boolean(exportStage)}>{exportLabel("pdf", true)} <b>↗</b></button>
-          <button onClick={() => exportInvoice("excel")} disabled={Boolean(exportStage)}>{exportLabel("excel", true)} <b>↗</b></button>
+          <button onClick={() => exportInvoice("pdf")} disabled={!canExport || Boolean(exportStage)}>{exportLabel("pdf", true)} <b>↗</b></button>
+          <button onClick={() => exportInvoice("excel")} disabled={!canExport || Boolean(exportStage)}>{exportLabel("excel", true)} <b>↗</b></button>
         </div>
       </div>
     </section>
@@ -262,18 +374,18 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
       <div className="panel">
         <div className="section-title"><span>01</span><div><h2>Данные счёта</h2><p>Номер присваивается автоматически при первом скачивании</p></div></div>
         <div className="form-grid">
-          <label>Следующий номер<input value={savedInvoice?.number ?? initialCatalog.invoiceNumberPreview} readOnly /></label>
-          <label>Дата<input type="date" value={meta.issueDate} onChange={(event) => updateMeta({ issueDate: event.target.value })} /></label>
+          <label>Номер счёта<input value={savedInvoice?.number ?? "Будет присвоен после сохранения"} readOnly /></label>
+          <label>Дата<input type="date" min={today} aria-invalid={Boolean(issueDateError)} value={meta.issueDate} onChange={(event) => updateMeta({ issueDate: event.target.value })} />{issueDateError && <small className="field-error" role="alert">{issueDateError}</small>}</label>
           <label>Проект<input placeholder="Название или шифр" value={meta.project} onChange={(event) => updateMeta({ project: event.target.value })} /></label>
           <label>№ заявки<input placeholder="Например, 260166" value={meta.requestNumber} onChange={(event) => updateMeta({ requestNumber: event.target.value })} /></label>
-          <label className="wide">Покупатель<input list="recent-client-names" autoComplete="organization" placeholder="Название организации" value={client.name} onChange={(event) => updateClientFromSuggestion("name", event.target.value)} />{recentClients.length > 0 && <small className="field-hint">Выберите ранее сохранённые реквизиты из подсказки</small>}</label>
+          <label className="wide">Покупатель<input list="recent-client-names" autoComplete="organization" placeholder="Название организации" aria-invalid={Boolean(clientFieldError)} value={client.name} onChange={(event) => updateClientFromSuggestion("name", event.target.value)} />{recentClients.length > 0 && <small className="field-hint">Выберите ранее сохранённые реквизиты из подсказки</small>}{clientFieldError && <small className="field-error" role="alert">{clientFieldError}</small>}</label>
           <label>ИНН<input list="recent-client-inns" inputMode="numeric" value={client.inn} onChange={(event) => updateClientFromSuggestion("inn", event.target.value)} /></label>
           <label>КПП<input inputMode="numeric" value={client.kpp} onChange={(event) => updateClient({ kpp: event.target.value })} /></label>
           <label className="wide">Адрес<input value={client.address} onChange={(event) => updateClient({ address: event.target.value })} /></label>
           <label>Телефон<input type="tel" value={client.phone} onChange={(event) => updateClient({ phone: event.target.value })} /></label>
           <label>Email<input type="email" value={client.email} onChange={(event) => updateClient({ email: event.target.value })} /></label>
           <label>Заявитель<input placeholder="ФИО" value={meta.applicant} onChange={(event) => updateMeta({ applicant: event.target.value })} /></label>
-          <label>Требуется к<input type="date" value={meta.dueDate} onChange={(event) => updateMeta({ dueDate: event.target.value })} /></label>
+          <label>Требуется к<input type="date" min={meta.issueDate > today ? meta.issueDate : today} aria-invalid={Boolean(dueDateError)} value={meta.dueDate} onChange={(event) => updateMeta({ dueDate: event.target.value })} />{dueDateError && <small className="field-error" role="alert">{dueDateError}</small>}</label>
           <datalist id="recent-client-names">{recentClients.map((item) => <option key={`${item.inn}-${item.name}`} value={item.name}>{item.inn ? `ИНН ${item.inn}` : item.address}</option>)}</datalist>
           <datalist id="recent-client-inns">{recentClients.filter((item) => item.inn).map((item) => <option key={`${item.inn}-${item.name}`} value={item.inn}>{item.name}</option>)}</datalist>
         </div>
@@ -290,11 +402,12 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
           const isRectangularTransition = method === "RECTANGULAR_TRANSITION" && !isRoundTransition;
           const isElbow = method === "RECTANGULAR_ELBOW";
           const isCustom = method === "CUSTOM_AREA";
+          const validation = itemValidations[index];
           return <article className="product" key={item.id}>
             <div className="product-head"><b>{String(index + 1).padStart(2, "0")}</b>
               <select value={item.productCode} onChange={(event) => {
                 const nextProduct = initialCatalog.products.find((candidate) => candidate.code === event.target.value)!;
-                updateItem(item.id, { productCode: nextProduct.code, dimensions: { ...nextProduct.defaultDimensions } });
+                updateItem(item.id, { productCode: nextProduct.code, dimensions: blankDimensions(nextProduct) });
               }}>
                 {initialCatalog.products.map((candidate) => <option key={candidate.code} value={candidate.code}>{candidate.name}</option>)}
               </select>
@@ -309,27 +422,27 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
               </figure>
               <div className="item-grid">
                 {isCustom
-                  ? <NumberField label="Площадь единицы, м²" value={item.dimensions.area} onChange={(value) => updateDimension(item.id, "area", value)} />
-                  : <NumberField label={method === "ROUND_DAMPER" ? "Диаметр D, мм" : "Ширина A, мм"} value={item.dimensions.width} onChange={(value) => updateDimension(item.id, "width", value)} />}
-                {hasHeight && <NumberField label="Ширина B, мм" value={item.dimensions.height} onChange={(value) => updateDimension(item.id, "height", value)} />}
+                  ? <NumberField id={`item-${item.id}-area`} label="Площадь единицы, м²" value={item.dimensions.area} error={visibleFieldError(validation?.errors.area)} onChange={(value) => updateDimension(item.id, "area", value)} />
+                  : <NumberField id={`item-${item.id}-width`} label={method === "ROUND_DAMPER" ? "Диаметр D, мм" : "Ширина A, мм"} value={item.dimensions.width} error={visibleFieldError(validation?.errors.width)} onChange={(value) => updateDimension(item.id, "width", value)} />}
+                {hasHeight && <NumberField id={`item-${item.id}-height`} label="Ширина B, мм" value={item.dimensions.height} error={visibleFieldError(validation?.errors.height)} onChange={(value) => updateDimension(item.id, "height", value)} />}
                 {isRectangularTransition && <>
-                  <NumberField label="Ширина A₂, мм" value={item.dimensions.width2} onChange={(value) => updateDimension(item.id, "width2", value)} />
-                  <NumberField label="Ширина B₂, мм" value={item.dimensions.height2} onChange={(value) => updateDimension(item.id, "height2", value)} />
+                  <NumberField id={`item-${item.id}-width2`} label="Ширина A₂, мм" value={item.dimensions.width2} error={visibleFieldError(validation?.errors.width2)} onChange={(value) => updateDimension(item.id, "width2", value)} />
+                  <NumberField id={`item-${item.id}-height2`} label="Ширина B₂, мм" value={item.dimensions.height2} error={visibleFieldError(validation?.errors.height2)} onChange={(value) => updateDimension(item.id, "height2", value)} />
                 </>}
-                {isRoundTransition && <NumberField label="Диаметр D, мм" value={item.dimensions.diameter} onChange={(value) => updateDimension(item.id, "diameter", value)} />}
-                {!isElbow && !isCustom && <NumberField label="Длина L, мм" value={item.dimensions.length} onChange={(value) => updateDimension(item.id, "length", value)} />}
+                {isRoundTransition && <NumberField id={`item-${item.id}-diameter`} label="Диаметр D, мм" value={item.dimensions.diameter} error={visibleFieldError(validation?.errors.diameter)} onChange={(value) => updateDimension(item.id, "diameter", value)} />}
+                {!isElbow && !isCustom && <NumberField id={`item-${item.id}-length`} label="Длина L, мм" value={item.dimensions.length} error={visibleFieldError(validation?.errors.length)} onChange={(value) => updateDimension(item.id, "length", value)} />}
                 {isElbow && <>
-                  <NumberField label="Угол, °" value={item.dimensions.angle} onChange={(value) => updateDimension(item.id, "angle", value)} />
-                  <NumberField label="Радиус R, мм" value={item.dimensions.radius} onChange={(value) => updateDimension(item.id, "radius", value)} />
+                  <NumberField id={`item-${item.id}-angle`} label="Угол, °" value={item.dimensions.angle} error={visibleFieldError(validation?.errors.angle)} onChange={(value) => updateDimension(item.id, "angle", value)} />
+                  <NumberField id={`item-${item.id}-radius`} label="Радиус R, мм" value={item.dimensions.radius} error={visibleFieldError(validation?.errors.radius)} onChange={(value) => updateDimension(item.id, "radius", value)} />
                 </>}
                 <label>Толщина<select value={item.thicknessCode} onChange={(event) => updateItem(item.id, { thicknessCode: event.target.value })}>
                   {initialCatalog.thicknesses.map((thickness) => <option key={thickness.code} value={thickness.code}>{thickness.label}</option>)}
                 </select></label>
                 {!method.includes("DAMPER") && !isCustom && <label>Шинорейка<select value={item.dimensions.rail ?? "20/20"} onChange={(event) => updateDimension(item.id, "rail", event.target.value)}><option>20/20</option><option>30/30</option></select></label>}
-                <NumberField label="Количество" min={1} value={item.quantity} onChange={(value) => updateItem(item.id, { quantity: value })} />
+                <NumberField id={`item-${item.id}-quantity`} label="Количество" integer value={item.quantity} error={visibleFieldError(validation?.errors.quantity)} onChange={(value) => updateItem(item.id, { quantity: value })} />
               </div>
             </div>
-            <div className="line-total"><span>{line?.description ?? "Заполните размеры"}</span><small>{line ? `${num(line.area)} м² × ${rub(line.grossUnitPrice)}` : "—"}</small><strong>{rub(line?.grossTotal ?? 0)}</strong></div>
+            <div className="line-total"><span>{line?.description ?? "Заполните размеры изделия"}</span><small>{line ? `≈ ${formatArea(line.area)} м² × ${formatRub(line.grossUnitPrice)}` : "—"}</small><strong>{formatRub(line?.grossTotal ?? 0)}</strong></div>
           </article>;
         })}
         <button className="add" type="button" onClick={() => {
@@ -341,14 +454,14 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
       <aside className="summary">
         <p>Сводка</p>
         <div><span>Позиций</span><b>{items.length}</b></div>
-        <div><span>Общая площадь</span><b>{num(calculation.quote.lines.reduce((sum, line) => sum + line.area, 0))} м²</b></div>
-        <div><span>Без НДС</span><b>{rub(calculation.quote.subtotal)}</b></div>
-        <div><span>{initialCatalog.tax.enabled ? `НДС ${initialCatalog.tax.rate}%` : "НДС отключён"}</span><b>{rub(calculation.quote.taxAmount)}</b></div>
-        <div className="grand"><span>Итого</span><b>{rub(calculation.quote.total)}</b></div>
-        {(calculation.error || message) && <div className={`form-message ${calculation.error || message?.kind === "error" ? "error" : message?.kind ?? ""}`}>{calculation.error || message?.text}</div>}
+        <div><span>Общая площадь</span><b>{calculation.quote.lines.length ? `${formatArea(calculation.quote.lines.reduce((sum, line) => sum + line.area, 0))} м²` : "—"}</b></div>
+        <div><span>Без НДС</span><b>{formatRub(calculation.quote.subtotal)}</b></div>
+        <div><span>{initialCatalog.tax.enabled ? `НДС ${initialCatalog.tax.rate}%` : "НДС отключён"}</span><b>{formatRub(calculation.quote.taxAmount)}</b></div>
+        <div className="grand"><span>Итого</span><b>{formatRub(calculation.quote.total)}</b></div>
+        {(formError || message) && <div className={`form-message ${formError || message?.kind === "error" ? "error" : message?.kind ?? ""}`}>{formError || message?.text}</div>}
         <div className="export-actions">
-          <button onClick={() => exportInvoice("pdf")} disabled={Boolean(exportStage)}>{exportLabel("pdf")}</button>
-          <button onClick={() => exportInvoice("excel")} disabled={Boolean(exportStage)}>{exportLabel("excel")}</button>
+          <button onClick={() => exportInvoice("pdf")} disabled={!canExport || Boolean(exportStage)}>{exportLabel("pdf")}</button>
+          <button onClick={() => exportInvoice("excel")} disabled={!canExport || Boolean(exportStage)}>{exportLabel("excel")}</button>
         </div>
         <small>При первом скачивании счёт сохраняется в системе. Повторное скачивание не создаёт новый номер, пока данные не изменены.</small>
       </aside>

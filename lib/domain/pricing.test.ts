@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateArea, calculateQuote, formatInvoiceNumber } from "./pricing";
+import { sumMoney, taxMoney } from "./rounding";
 import type { PublicCatalog } from "./types";
 
 const catalog: PublicCatalog = {
@@ -28,13 +29,25 @@ describe("calculateQuote", () => {
     expect(quote.lines[0].area).toBe(3.9);
     expect(quote.lines[0].grossUnitPrice).toBeCloseTo(742.61, 2);
     expect(quote.total).toBeCloseTo(2896.18, 2);
-    expect(quote.subtotal + quote.taxAmount).toBeCloseTo(quote.total, 2);
+    expect(quote.taxAmount).toBe(taxMoney(quote.subtotal, 22));
+    expect(sumMoney([quote.subtotal, quote.taxAmount])).toBe(quote.total);
   });
 
   it("не начисляет налог, когда НДС отключён", () => {
     const quote = calculateQuote([{ productCode: "duct", thicknessCode: "0.5", quantity: 1, dimensions: { width: 400, height: 250, length: 1500 } }], { ...catalog, tax: { enabled: false, rate: 25 } });
     expect(quote.taxAmount).toBe(0);
     expect(quote.total).toBe(quote.subtotal);
+  });
+
+  it("суммирует несколько позиций только по округлённым денежным строкам", () => {
+    const first = { productCode: "duct", thicknessCode: "0.5", quantity: 1, dimensions: { width: 400, height: 250, length: 1500 } };
+    const second = { productCode: "duct", thicknessCode: "0.5", quantity: 3, dimensions: { width: 300, height: 200, length: 1200 } };
+    const quote = calculateQuote([first, second], catalog);
+
+    expect(quote.lines).toHaveLength(2);
+    expect(quote.subtotal).toBe(sumMoney(quote.lines.map((line) => line.netTotal)));
+    expect(quote.taxAmount).toBe(sumMoney(quote.lines.map((line) => taxMoney(line.netTotal, 22))));
+    expect(quote.total).toBe(sumMoney(quote.lines.map((line) => line.grossTotal)));
   });
 });
 
@@ -65,6 +78,10 @@ describe("calculateArea", () => {
 
   it("умножает площадь единицы на количество", () => {
     expect(calculateArea("RECTANGULAR_DUCT", { width: 400, height: 250, length: 1500 }, 3)).toBe(5.85);
+  });
+
+  it("отклоняет дробное количество изделий", () => {
+    expect(() => calculateArea("RECTANGULAR_DUCT", { width: 400, height: 250, length: 1500 }, 1.5)).toThrow(/целым числом/);
   });
 
   it("корректно считает площадь партии из 1 000 000 изделий", () => {

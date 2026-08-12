@@ -94,7 +94,7 @@ it("формирует Excel для количества 1 000 000", async () =>
   expect(sheet.getCell("F33").numFmt).toBe(EXCEL_NUMBER_FORMATS.integer);
   expect(sheet.getCell("G33").value).toBe(1_950_000);
   expect(sheet.getCell("G33").numFmt).toBe(EXCEL_NUMBER_FORMATS.area);
-  expectFormula(sheet.getCell("J33"), "G33*H33", total);
+  expect(sheet.getCell("J33").value).toBe(total);
   expectFormula(sheet.getCell("J34"), "SUM(J33:J33)", total);
 });
 
@@ -126,7 +126,7 @@ describe("генерация Excel-счёта", () => {
     expect(sheet.getCell("C89").master.address).toBe("C89");
     expect(sheet.getCell("E89").master.address).toBe("C89");
     expect(sheet.getRow(39).hidden).toBe(false);
-    expectFormula(sheet.getCell("J89"), "G89*H89", 1448.09);
+    expect(sheet.getCell("J89").value).toBe(1448.09);
     expectFormula(sheet.getCell("G90"), "SUM(G33:G89)", 1.95 * rows.length);
     expectFormula(sheet.getCell("J90"), "SUM(J33:J89)", 1448.09 * rows.length);
     expectFormula(sheet.getCell("K4"), "J90", 1448.09 * rows.length);
@@ -199,12 +199,12 @@ describe("генерация Excel-счёта", () => {
     expect(sheet.getCell("K10").numFmt).toBe(EXCEL_NUMBER_FORMATS.date);
   });
 
-  it("сохраняет формулы строк и итогов без ошибок Excel", async () => {
+  it("сохраняет точные суммы строк и формулы итогов без ошибок Excel", async () => {
     const workbook = await generateWorkbook();
     const sheet = workbook.getWorksheet("Счёт");
     if (!sheet) throw new Error("Лист «Счёт» не найден");
 
-    expectFormula(sheet.getCell("J33"), "G33*H33", 1448.09);
+    expect(sheet.getCell("J33").value).toBe(1448.09);
     expectFormula(sheet.getCell("G34"), "SUM(G33:G33)", 1.95);
     expectFormula(sheet.getCell("J34"), "SUM(J33:J33)", 1448.09);
     expectFormula(sheet.getCell("B15"), "SUM(G33:G33)", 1.95);

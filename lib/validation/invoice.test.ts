@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { invoiceInputSchema, MAX_INVOICE_ITEM_QUANTITY } from "./invoice";
+import { nextDate, todayInMoscow } from "./dates";
+
+const today = todayInMoscow();
 
 const validInvoice = {
   idempotencyKey: "6f5769dc-5c8b-4f1f-a39e-6b2c16af5084",
-  issueDate: "2026-08-11",
-  dueDate: "2026-08-27",
+  issueDate: today,
+  dueDate: nextDate(today),
   project: "Тестовый проект",
   requestNumber: "789678687",
   applicant: "Павел",
@@ -45,5 +48,28 @@ describe("invoiceInputSchema", () => {
         message: "не должно превышать 1 000 000 000",
       });
     }
+  });
+
+  it("отклоняет дробное количество и отрицательный размер", () => {
+    const fractional = invoiceInputSchema.safeParse({
+      ...validInvoice,
+      items: [{ ...validInvoice.items[0], quantity: 1.5 }],
+    });
+    const negative = invoiceInputSchema.safeParse({
+      ...validInvoice,
+      items: [{ ...validInvoice.items[0], dimensions: { ...validInvoice.items[0].dimensions, width: -400 } }],
+    });
+
+    expect(fractional.success).toBe(false);
+    expect(negative.success).toBe(false);
+  });
+
+  it("отклоняет дату в прошлом", () => {
+    const past = new Date(`${today}T12:00:00.000Z`);
+    past.setUTCDate(past.getUTCDate() - 1);
+    const result = invoiceInputSchema.safeParse({ ...validInvoice, issueDate: past.toISOString().slice(0, 10) });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0]).toMatchObject({ path: ["issueDate"] });
   });
 });

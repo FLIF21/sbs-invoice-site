@@ -55,14 +55,28 @@ test("reload сохраняет черновик, а PDF и Excel использ
   });
 
   await page.goto("/");
+  await expect(page.locator("article.product")).toHaveCount(1);
+  await expect(page.getByLabel("Номер счёта")).toHaveValue("Будет присвоен после сохранения");
+  await expect(page.getByLabel("Ширина A, мм")).toHaveValue("");
+  await expect(page.getByLabel("Ширина B, мм")).toHaveValue("");
+  await expect(page.getByLabel("Длина L, мм")).toHaveValue("");
+  await expect(page.getByText("Заполните размеры изделия").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Скачать счёт в PDF" })).toBeDisabled();
+
   await page.getByLabel("Покупатель").fill("ООО «E2E Покупатель»");
   await page.getByLabel("ИНН").fill("1234567890");
   await page.getByLabel("КПП").fill("123456789");
   await page.getByLabel("Адрес").fill("Москва, длинный тестовый адрес, дом 1");
   await page.getByLabel("Проект").fill("E2E проект");
   await page.getByLabel("№ заявки").fill("E2E-42");
+  await page.getByLabel("Ширина A, мм").fill("400,5");
+  await page.getByLabel("Ширина B, мм").fill("250");
+  await page.getByLabel("Длина L, мм").fill("1500");
   await page.getByRole("button", { name: /Добавить изделие/ }).click();
   await expect(page.locator("article.product")).toHaveCount(2);
+  await page.getByLabel("Ширина A, мм").nth(1).fill("300.5");
+  await page.getByLabel("Ширина B, мм").nth(1).fill("200");
+  await page.getByLabel("Длина L, мм").nth(1).fill("1200");
 
   await page.reload();
   await expect(page.getByLabel("Покупатель")).toHaveValue("ООО «E2E Покупатель»");
@@ -79,7 +93,7 @@ test("reload сохраняет черновик, а PDF и Excel использ
   await expect(page.getByText("PDF скачан. Счёт № E2E-000001")).toBeVisible();
 
   await page.reload();
-  await expect(page.getByLabel("Следующий номер")).toHaveValue("E2E-000001");
+  await expect(page.getByLabel("Номер счёта")).toHaveValue("E2E-000001");
   const excelDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Скачать счёт в Excel" }).click();
   const excelFile = await excelDownload;

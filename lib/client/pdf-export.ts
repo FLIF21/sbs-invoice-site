@@ -3,6 +3,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { assertCompanyPaymentDetails } from "../domain/company";
+import { formatArea, formatRub } from "../domain/format";
 import type { CompanySnapshot, InvoiceDocument } from "../domain/types";
 
 export type InvoicePdfAssets = {
@@ -13,7 +14,6 @@ export type InvoicePdfAssets = {
 
 const PAGE = { left: 14, right: 196, bottom: 281 };
 const CONTENT_WIDTH = PAGE.right - PAGE.left;
-const rub = (value: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB" }).format(value);
 const num = (value: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 }).format(value);
 const date = (value: string) => new Intl.DateTimeFormat("ru-RU").format(new Date(value));
 
@@ -96,16 +96,16 @@ function drawTotals(doc: jsPDF, invoice: InvoiceDocument, requestedY: number) {
   doc.setTextColor(67, 79, 75);
   doc.setFont("Arial", "normal");
   doc.text("Сумма без НДС", 116, y + 6);
-  doc.text(rub(invoice.subtotal), 192, y + 6, { align: "right" });
+  doc.text(formatRub(invoice.subtotal), 192, y + 6, { align: "right" });
   doc.text(invoice.tax.enabled ? `НДС ${num(invoice.tax.rate)}%` : "НДС не облагается", 116, y + 12);
-  doc.text(invoice.tax.enabled ? rub(invoice.taxAmount) : rub(0), 192, y + 12, { align: "right" });
+  doc.text(invoice.tax.enabled ? formatRub(invoice.taxAmount) : formatRub(0), 192, y + 12, { align: "right" });
   doc.setDrawColor(195, 204, 200);
   doc.line(116, y + 16, 192, y + 16);
   doc.setFont("Arial", "bold");
   doc.setFontSize(11.5);
   doc.setTextColor(20, 29, 26);
   doc.text("Итого к оплате", 116, y + 23);
-  doc.text(rub(invoice.total), 192, y + 23, { align: "right" });
+  doc.text(formatRub(invoice.total), 192, y + 23, { align: "right" });
   return y + 36;
 }
 
@@ -201,9 +201,9 @@ export function buildInvoicePdf(invoice: InvoiceDocument, assets: InvoicePdfAsse
   const fieldsEndY = drawInvoiceFields(doc, invoice, 34);
   autoTable(doc, {
     startY: fieldsEndY + 3,
-    head: [["№", "Наименование", "Кол-во", "Площадь, м²", "Цена за м²", "Сумма"]],
+    head: [["№", "Наименование", "Кол-во", "Площадь, м²", "Цена за м² (≈)", "Сумма"]],
     body: invoice.items.map((item, index) => [
-      String(index + 1), item.description, num(item.quantity), num(item.area), rub(item.grossUnitPrice), rub(item.grossTotal),
+      String(index + 1), item.description, String(item.quantity), formatArea(item.area), formatRub(item.grossUnitPrice), formatRub(item.grossTotal),
     ]),
     showHead: "everyPage",
     rowPageBreak: "avoid",

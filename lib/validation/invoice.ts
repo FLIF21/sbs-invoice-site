@@ -1,16 +1,20 @@
 import { z } from "zod";
+import { invoiceDateError, todayInMoscow } from "./dates";
+import { MAX_ANGLE_VALUE, MAX_DIMENSION_VALUE, MAX_INVOICE_ITEM_QUANTITY } from "./numeric-input";
 
 const optionalText = z.string().trim().max(1_000).optional().default("");
-const dimension = z.number().finite().positive().max(1_000_000).optional();
+const dimension = z.number().finite().positive().max(MAX_DIMENSION_VALUE).optional();
 
-// The database stores quantity as Decimal(18,3). This guard stays well inside
-// that boundary while allowing large production batches.
-export const MAX_INVOICE_ITEM_QUANTITY = 1_000_000_000;
+// The database column has decimal capacity, but a public invoice quantity is a
+// count of finished pieces and therefore must be an integer.
+export { MAX_INVOICE_ITEM_QUANTITY };
 
 export const quoteItemSchema = z.object({
   productCode: z.string().trim().min(1).max(80),
   thicknessCode: z.string().trim().min(1).max(20),
-  quantity: z.number().finite().positive().max(MAX_INVOICE_ITEM_QUANTITY, {
+  quantity: z.number().finite().int({ message: "должно быть целым числом" }).min(1, {
+    message: "должно быть не меньше 1",
+  }).max(MAX_INVOICE_ITEM_QUANTITY, {
     message: "не должно превышать 1 000 000 000",
   }),
   dimensions: z.object({
@@ -21,7 +25,7 @@ export const quoteItemSchema = z.object({
     diameter: dimension,
     length: dimension,
     radius: dimension,
-    angle: z.number().finite().positive().max(360).optional(),
+    angle: z.number().finite().positive().max(MAX_ANGLE_VALUE).optional(),
     area: dimension,
     rail: z.string().trim().max(30).optional(),
   }),
@@ -44,6 +48,14 @@ export const invoiceInputSchema = z.object({
     email: z.union([z.email(), z.literal("")]).optional().default(""),
   }),
   items: z.array(quoteItemSchema).min(1).max(100),
+}).superRefine((value, context) => {
+  const error = invoiceDateError(value.issueDate ?? todayInMoscow(), value.dueDate ?? "");
+  if (!error) return;
+  context.addIssue({
+    code: "custom",
+    path: [error.startsWith("Дата готовности") ? "dueDate" : "issueDate"],
+    message: error,
+  });
 });
 
 export type InvoiceInput = z.infer<typeof invoiceInputSchema>;

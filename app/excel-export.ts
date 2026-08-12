@@ -33,7 +33,7 @@ export const EXCEL_NUMBER_FORMATS = {
   date: "dd.mm.yyyy",
   dateTime: "dd.mm.yyyy hh:mm",
   integer: "0",
-  area: "0.###",
+  area: "0.####",
   money: '#,##0.00 "₽"',
 } as const;
 
@@ -217,7 +217,7 @@ export async function buildInvoiceExcelBuffer(
   sheet.getCell("C32").value = "Наименование";
   sheet.getCell("F32").value = "Количество";
   sheet.getCell("G32").value = "Площадь, м²";
-  sheet.getCell("H32").value = "Цена за м²";
+  sheet.getCell("H32").value = "Цена за м² (≈)";
   sheet.getCell("J32").value = "Сумма";
 
   data.rows.forEach((item, index) => {
@@ -233,10 +233,9 @@ export async function buildInvoiceExcelBuffer(
     sheet.getCell(`F${rowNumber}`).value = item.qty;
     sheet.getCell(`G${rowNumber}`).value = item.area;
     sheet.getCell(`H${rowNumber}`).value = item.rate;
-    sheet.getCell(`J${rowNumber}`).value = {
-      formula: `G${rowNumber}*H${rowNumber}`,
-      result: item.total,
-    };
+    // The line total includes VAT rounded at the line boundary. Keeping the
+    // authoritative kopeck value avoids a formula that only appears exact.
+    sheet.getCell(`J${rowNumber}`).value = item.total;
     setNumberFormat(`F${rowNumber}`, EXCEL_NUMBER_FORMATS.integer);
     setNumberFormat(`G${rowNumber}`, EXCEL_NUMBER_FORMATS.area);
     setNumberFormat(`H${rowNumber}`, EXCEL_NUMBER_FORMATS.money);
