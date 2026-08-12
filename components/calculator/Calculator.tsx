@@ -2,31 +2,34 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { downloadInvoiceExcel } from "@/app/excel-export";
 import { calculateQuote } from "@/lib/domain/pricing";
 import type { InvoiceDocument, ProductDimensions, PublicCatalog, QuoteItemInput } from "@/lib/domain/types";
 import { downloadInvoicePdf } from "@/lib/client/pdf-export";
-
-type NumericValue = number | string;
-type EditableDimensions = Omit<ProductDimensions, "width" | "height" | "width2" | "height2" | "diameter" | "length" | "radius" | "angle" | "area"> & {
-  width?: NumericValue;
-  height?: NumericValue;
-  width2?: NumericValue;
-  height2?: NumericValue;
-  diameter?: NumericValue;
-  length?: NumericValue;
-  radius?: NumericValue;
-  angle?: NumericValue;
-  area?: NumericValue;
-};
-type EditableItem = { id: number; productCode: string; thicknessCode: string; quantity: NumericValue; dimensions: EditableDimensions };
-type ClientDetails = { name: string; inn: string; kpp: string; address: string; phone: string; email: string };
+import {
+  INVOICE_DRAFT_STORAGE_KEY,
+  isMeaningfulDraft,
+  newIdempotencyKey,
+  parseInvoiceDraft,
+  serializeInvoiceDraft,
+  type ClientDetails,
+  type EditableDimensions,
+  type EditableItem,
+  type InvoiceMeta,
+  type NumericValue,
+} from "@/lib/client/invoice-draft";
 
 const rub = (value: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB" }).format(value);
 const num = (value: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 }).format(value);
 const numericInput = (value: string): NumericValue => value.replace(",", ".");
 const recentClientsKey = "sbs-recent-clients-v1";
+const emptyClient = (): ClientDetails => ({ name: "", inn: "", kpp: "", address: "", phone: "", email: "" });
+const emptyMeta = (): InvoiceMeta => ({
+  issueDate: new Date().toISOString().slice(0, 10), dueDate: "", project: "", requestNumber: "", applicant: "", notes: "",
+});
+type ExportStage = "saving" | "pdf" | "excel" | null;
+type FormMessage = { kind: "success" | "error" | "info"; text: string } | null;
 
 function isClientDetails(value: unknown): value is ClientDetails {
   if (!value || typeof value !== "object") return false;
@@ -75,19 +78,15 @@ function NumberField({ label, value, onChange, min }: { label: string; value?: N
 
 export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }) {
   const [items, setItems] = useState<EditableItem[]>(() => [makeItem(initialCatalog, 1)]);
-  const [meta, setMeta] = useState({
-    issueDate: new Date().toISOString().slice(0, 10),
-    dueDate: "",
-    project: "",
-    requestNumber: "",
-    applicant: "",
-    notes: "",
-  });
-  const [client, setClient] = useState<ClientDetails>({ name: "", inn: "", kpp: "", address: "", phone: "", email: "" });
+  const [meta, setMeta] = useState<InvoiceMeta>(emptyMeta);
+  const [client, setClient] = useState<ClientDetails>(emptyClient);
   const [recentClients, setRecentClients] = useState<ClientDetails[]>([]);
   const [savedInvoice, setSavedInvoice] = useState<InvoiceDocument | null>(null);
-  const [busy, setBusy] = useState<"pdf" | "excel" | null>(null);
-  const [message, setMessage] = useState("");
+  const [exportStage, setExportStage] = useState<ExportStage>(null);
+  const [message, setMessage] = useState<FormMessage>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const idempotencyKeyRef = useRef(newIdempotencyKey());
+  const exportLockRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -97,9 +96,34 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
       } catch {
         localStorage.removeItem(recentClientsKey);
       }
+      const rawDraft = sessionStorage.getItem(INVOICE_DRAFT_STORAGE_KEY);
+      const draft = parseInvoiceDraft(rawDraft, initialCatalog);
+      if (draft) {
+        idempotencyKeyRef.current = draft.idempotencyKey;
+        setMeta(draft.meta);
+        setClient(draft.client);
+        setItems(draft.items);
+        setSavedInvoice(draft.savedInvoice);
+        setMessage({ kind: "info", text: draft.savedInvoice ? `Восстановлен счёт № ${draft.savedInvoice.number}` : "Черновик восстановлен" });
+      } else if (rawDraft) {
+        sessionStorage.removeItem(INVOICE_DRAFT_STORAGE_KEY);
+        setMessage({ kind: "error", text: "Повреждённый черновик удалён. Начат новый счёт." });
+      }
+      setDraftReady(true);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [initialCatalog]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    try {
+      sessionStorage.setItem(INVOICE_DRAFT_STORAGE_KEY, serializeInvoiceDraft({
+        idempotencyKey: idempotencyKeyRef.current, meta, client, items, savedInvoice,
+      }));
+    } catch {
+      window.setTimeout(() => setMessage({ kind: "error", text: "Не удалось сохранить черновик в браузере. Не закрывайте страницу до завершения работы." }), 0);
+    }
+  }, [client, draftReady, items, meta, savedInvoice]);
 
   const calculation = useMemo(() => {
     try {
@@ -113,8 +137,9 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
   }, [items, initialCatalog]);
 
   const invalidate = () => {
+    idempotencyKeyRef.current = newIdempotencyKey();
     setSavedInvoice(null);
-    setMessage("");
+    setMessage(null);
   };
   const updateMeta = (patch: Partial<typeof meta>) => { invalidate(); setMeta((current) => ({ ...current, ...patch })); };
   const updateClient = (patch: Partial<typeof client>) => { invalidate(); setClient((current) => ({ ...current, ...patch })); };
@@ -147,38 +172,72 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
     if (savedInvoice) return savedInvoice;
     if (calculation.error) throw new Error(calculation.error);
     if (!client.name.trim()) throw new Error("Укажите название покупателя");
+    setExportStage("saving");
     const response = await fetch("/api/public/invoices", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...meta, client, items: items.map(toQuoteItem) }),
+      body: JSON.stringify({ idempotencyKey: idempotencyKeyRef.current, ...meta, client, items: items.map(toQuoteItem) }),
     });
     const result = await response.json() as InvoiceDocument & { error?: string };
     if (!response.ok) throw new Error(result.error || "Не удалось сформировать счёт");
     rememberClient();
     setSavedInvoice(result);
-    setMessage(`Счёт № ${result.number} сохранён`);
+    try {
+      sessionStorage.setItem(INVOICE_DRAFT_STORAGE_KEY, serializeInvoiceDraft({
+        idempotencyKey: idempotencyKeyRef.current, meta, client, items, savedInvoice: result,
+      }));
+    } catch { /* The invoice is already safe on the server; the UI will show storage failures through autosave. */ }
     return result;
   }
 
-  async function exportInvoice(format: "pdf" | "excel") {
-    setBusy(format);
-    setMessage("");
-    try {
-      const invoice = await ensureInvoice();
-      if (format === "pdf") await downloadInvoicePdf(invoice);
-      else await downloadInvoiceExcel(invoice);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Не удалось сформировать файл");
-    } finally {
-      setBusy(null);
-    }
+  function exportInvoice(format: "pdf" | "excel") {
+    if (exportLockRef.current) return exportLockRef.current;
+    const operation = (async () => {
+      setMessage(null);
+      try {
+        const invoice = await ensureInvoice();
+        setExportStage(format);
+        if (format === "pdf") await downloadInvoicePdf(invoice);
+        else await downloadInvoiceExcel(invoice);
+        setMessage({ kind: "success", text: `${format === "pdf" ? "PDF" : "Excel"} скачан. Счёт № ${invoice.number}` });
+      } catch (error) {
+        setMessage({ kind: "error", text: error instanceof Error ? error.message : "Не удалось сформировать файл. Повторите попытку." });
+      } finally {
+        setExportStage(null);
+      }
+    })();
+    exportLockRef.current = operation;
+    void operation.finally(() => {
+      if (exportLockRef.current === operation) exportLockRef.current = null;
+    });
+    return operation;
   }
+
+  function newInvoice() {
+    const defaultItem = makeItem(initialCatalog, 1);
+    if (isMeaningfulDraft(meta, client, items, defaultItem, savedInvoice)
+      && !window.confirm("Очистить заполненный черновик и начать новый счёт?")) return;
+    sessionStorage.removeItem(INVOICE_DRAFT_STORAGE_KEY);
+    idempotencyKeyRef.current = newIdempotencyKey();
+    setMeta(emptyMeta());
+    setClient(emptyClient());
+    setItems([defaultItem]);
+    setSavedInvoice(null);
+    setMessage({ kind: "info", text: "Начат новый счёт" });
+  }
+
+  const exportLabel = (format: "pdf" | "excel", compact = false) => {
+    if (exportStage === "saving") return "Сохраняем счёт…";
+    if (exportStage === format) return `Формируем ${format === "pdf" ? "PDF" : "Excel"}…`;
+    return compact ? `Скачать ${format === "pdf" ? "PDF" : "Excel"}` : `Скачать счёт в ${format === "pdf" ? "PDF" : "Excel"}`;
+  };
 
   return <main className="public-site">
     <header className="topbar">
       <div><span className="mark">СБС</span><span className="brand">Счёт</span></div>
       <div className="topbar-actions">
         <div className="status"><i /> Прайс обновлён {new Date(initialCatalog.pricesUpdatedAt).toLocaleDateString("ru-RU")}</div>
+        <button className="new-invoice-button" type="button" onClick={newInvoice} disabled={Boolean(exportStage)}>Новый счёт</button>
         <Link className="admin-link" href="/admin">Войти</Link>
       </div>
     </header>
@@ -193,8 +252,8 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
         <span>К оплате</span><strong>{rub(calculation.quote.total)}</strong>
         <small>{initialCatalog.tax.enabled ? `включая НДС ${initialCatalog.tax.rate}%` : "без НДС"} · {items.length} поз.</small>
         <div className="export-actions">
-          <button onClick={() => exportInvoice("pdf")} disabled={Boolean(busy)}>{busy === "pdf" ? "Формируем…" : "Скачать PDF"} <b>↗</b></button>
-          <button onClick={() => exportInvoice("excel")} disabled={Boolean(busy)}>{busy === "excel" ? "Формируем…" : "Скачать Excel"} <b>↗</b></button>
+          <button onClick={() => exportInvoice("pdf")} disabled={Boolean(exportStage)}>{exportLabel("pdf", true)} <b>↗</b></button>
+          <button onClick={() => exportInvoice("excel")} disabled={Boolean(exportStage)}>{exportLabel("excel", true)} <b>↗</b></button>
         </div>
       </div>
     </section>
@@ -286,10 +345,10 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
         <div><span>Без НДС</span><b>{rub(calculation.quote.subtotal)}</b></div>
         <div><span>{initialCatalog.tax.enabled ? `НДС ${initialCatalog.tax.rate}%` : "НДС отключён"}</span><b>{rub(calculation.quote.taxAmount)}</b></div>
         <div className="grand"><span>Итого</span><b>{rub(calculation.quote.total)}</b></div>
-        {(calculation.error || message) && <div className={`form-message ${calculation.error ? "error" : ""}`}>{calculation.error || message}</div>}
+        {(calculation.error || message) && <div className={`form-message ${calculation.error || message?.kind === "error" ? "error" : message?.kind ?? ""}`}>{calculation.error || message?.text}</div>}
         <div className="export-actions">
-          <button onClick={() => exportInvoice("pdf")} disabled={Boolean(busy)}>Скачать счёт в PDF</button>
-          <button onClick={() => exportInvoice("excel")} disabled={Boolean(busy)}>{busy === "excel" ? "Формируем Excel…" : "Скачать счёт в Excel"}</button>
+          <button onClick={() => exportInvoice("pdf")} disabled={Boolean(exportStage)}>{exportLabel("pdf")}</button>
+          <button onClick={() => exportInvoice("excel")} disabled={Boolean(exportStage)}>{exportLabel("excel")}</button>
         </div>
         <small>При первом скачивании счёт сохраняется в системе. Повторное скачивание не создаёт новый номер, пока данные не изменены.</small>
       </aside>

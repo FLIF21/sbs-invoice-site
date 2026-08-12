@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { Prisma, type Invoice, type InvoiceItem } from "@prisma/client";
 import { calculateQuote, formatInvoiceNumber } from "@/lib/domain/pricing";
 import type { InvoiceDocument, InvoiceClientData } from "@/lib/domain/types";
@@ -6,6 +7,7 @@ import type { InvoiceInput } from "@/lib/validation/invoice";
 import { writeAudit } from "./audit";
 import { getPublicCatalog } from "./catalog";
 import { db } from "./db";
+import { ApiError } from "./http";
 
 type RequestActor = {
   userId?: string | null;
@@ -42,7 +44,41 @@ function clientJson(client: InvoiceClientData): Prisma.InputJsonObject {
   };
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function invoiceInputHash(input: InvoiceInput) {
+  const content = Object.fromEntries(Object.entries(input).filter(([key]) => key !== "idempotencyKey"));
+  return createHash("sha256").update(canonicalJson(content)).digest("hex");
+}
+
+function ensureMatchingIdempotentRequest(invoice: InvoiceWithItems, hash: string) {
+  if (invoice.idempotencyHash !== hash) {
+    throw new ApiError(409, "Этот черновик уже сохранён с другими данными. Нажмите «Новый счёт» и повторите попытку.");
+  }
+}
+
+function serializeMatchingIdempotentRequest(invoice: InvoiceWithItems, hash: string) {
+  ensureMatchingIdempotentRequest(invoice, hash);
+  return serializeInvoice(invoice);
+}
+
 export async function createInvoice(input: InvoiceInput, actor: RequestActor = {}) {
+  const inputHash = invoiceInputHash(input);
+  const existing = await db.invoice.findUnique({
+    where: { idempotencyKey: input.idempotencyKey },
+    include: { items: { orderBy: { position: "asc" } } },
+  });
+  if (existing) return serializeMatchingIdempotentRequest(existing, inputHash);
+
   const catalog = await getPublicCatalog();
   const quote = calculateQuote(input.items, catalog);
   const now = input.issueDate ? new Date(`${input.issueDate}T12:00:00.000Z`) : new Date();
@@ -50,6 +86,15 @@ export async function createInvoice(input: InvoiceInput, actor: RequestActor = {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const invoice = await db.$transaction(async (tx) => {
+        const repeated = await tx.invoice.findUnique({
+          where: { idempotencyKey: input.idempotencyKey },
+          include: { items: { orderBy: { position: "asc" } } },
+        });
+        if (repeated) {
+          ensureMatchingIdempotentRequest(repeated, inputHash);
+          return repeated;
+        }
+
         const number = await takeInvoiceNumber(tx, now);
         const clientData = {
           name: input.client.name,
@@ -70,6 +115,8 @@ export async function createInvoice(input: InvoiceInput, actor: RequestActor = {
         const created = await tx.invoice.create({
           data: {
             number,
+            idempotencyKey: input.idempotencyKey,
+            idempotencyHash: inputHash,
             issueDate: now,
             dueDate: input.dueDate ? new Date(`${input.dueDate}T12:00:00.000Z`) : null,
             project: nullable(input.project),
@@ -119,6 +166,13 @@ export async function createInvoice(input: InvoiceInput, actor: RequestActor = {
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
       return serializeInvoice(invoice);
     } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const repeated = await db.invoice.findUnique({
+          where: { idempotencyKey: input.idempotencyKey },
+          include: { items: { orderBy: { position: "asc" } } },
+        });
+        if (repeated) return serializeMatchingIdempotentRequest(repeated, inputHash);
+      }
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034" && attempt < 2) continue;
       throw error;
     }

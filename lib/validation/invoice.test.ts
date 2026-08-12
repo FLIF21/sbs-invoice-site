@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { invoiceInputSchema, MAX_INVOICE_ITEM_QUANTITY } from "./invoice";
 
 const validInvoice = {
+  idempotencyKey: "6f5769dc-5c8b-4f1f-a39e-6b2c16af5084",
   issueDate: "2026-08-11",
   dueDate: "2026-08-27",
   project: "Тестовый проект",

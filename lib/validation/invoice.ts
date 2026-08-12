@@ -28,6 +28,7 @@ export const quoteItemSchema = z.object({
 });
 
 export const invoiceInputSchema = z.object({
+  idempotencyKey: z.uuid(),
   issueDate: z.iso.date().optional(),
   dueDate: z.union([z.iso.date(), z.literal("")]).optional(),
   project: optionalText,

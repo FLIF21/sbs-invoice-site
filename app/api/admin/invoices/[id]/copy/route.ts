@@ -1,4 +1,5 @@
 import { PermissionKey } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { apiError, ApiError, requireApiUser } from "@/lib/server/http";
 import { createInvoice, getInvoiceDocument } from "@/lib/server/invoices";
@@ -11,6 +12,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const original = await getInvoiceDocument((await context.params).id);
     if (!original) throw new ApiError(404, "Счёт не найден");
     const copy = await createInvoice({
+      idempotencyKey: randomUUID(),
       issueDate: new Date().toISOString().slice(0, 10),
       dueDate: "",
       project: original.project ?? "",
