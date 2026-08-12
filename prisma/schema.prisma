@@ -260,8 +260,6 @@ model Client {
 model Invoice {
   id              String        @id @default(cuid())
   number          String        @unique
-  idempotencyKey  String?       @unique
-  idempotencyHash String?
   status          InvoiceStatus @default(ISSUED)
   issueDate       DateTime      @default(now())
   dueDate         DateTime?
