@@ -375,7 +375,7 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
         <div className="section-title"><span>01</span><div><h2>Данные счёта</h2><p>Номер присваивается автоматически при первом скачивании</p></div></div>
         <div className="form-grid">
           <label>Номер счёта<input value={savedInvoice?.number ?? "Будет присвоен после сохранения"} readOnly /></label>
-          <label>Дата<input type="date" min={today} aria-invalid={Boolean(issueDateError)} value={meta.issueDate} onChange={(event) => updateMeta({ issueDate: event.target.value })} />{issueDateError && <small className="field-error" role="alert">{issueDateError}</small>}</label>
+          <label htmlFor="invoice-issue-date">Дата<input id="invoice-issue-date" type="date" min={today} aria-invalid={Boolean(issueDateError)} aria-describedby={issueDateError ? "invoice-issue-date-error" : undefined} value={meta.issueDate} onChange={(event) => updateMeta({ issueDate: event.target.value })} />{issueDateError && <small className="field-error" id="invoice-issue-date-error" role="alert">{issueDateError}</small>}</label>
           <label>Проект<input placeholder="Название или шифр" value={meta.project} onChange={(event) => updateMeta({ project: event.target.value })} /></label>
           <label>№ заявки<input placeholder="Например, 260166" value={meta.requestNumber} onChange={(event) => updateMeta({ requestNumber: event.target.value })} /></label>
           <label className="wide">Покупатель<input list="recent-client-names" autoComplete="organization" placeholder="Название организации" aria-invalid={Boolean(clientFieldError)} value={client.name} onChange={(event) => updateClientFromSuggestion("name", event.target.value)} />{recentClients.length > 0 && <small className="field-hint">Выберите ранее сохранённые реквизиты из подсказки</small>}{clientFieldError && <small className="field-error" role="alert">{clientFieldError}</small>}</label>
@@ -385,7 +385,7 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
           <label>Телефон<input type="tel" value={client.phone} onChange={(event) => updateClient({ phone: event.target.value })} /></label>
           <label>Email<input type="email" value={client.email} onChange={(event) => updateClient({ email: event.target.value })} /></label>
           <label>Заявитель<input placeholder="ФИО" value={meta.applicant} onChange={(event) => updateMeta({ applicant: event.target.value })} /></label>
-          <label>Требуется к<input type="date" min={meta.issueDate > today ? meta.issueDate : today} aria-invalid={Boolean(dueDateError)} value={meta.dueDate} onChange={(event) => updateMeta({ dueDate: event.target.value })} />{dueDateError && <small className="field-error" role="alert">{dueDateError}</small>}</label>
+          <label htmlFor="invoice-due-date">Требуется к<input id="invoice-due-date" type="date" min={meta.issueDate > today ? meta.issueDate : today} aria-invalid={Boolean(dueDateError)} aria-describedby={dueDateError ? "invoice-due-date-error" : undefined} value={meta.dueDate} onChange={(event) => updateMeta({ dueDate: event.target.value })} />{dueDateError && <small className="field-error" id="invoice-due-date-error" role="alert">{dueDateError}</small>}</label>
           <datalist id="recent-client-names">{recentClients.map((item) => <option key={`${item.inn}-${item.name}`} value={item.name}>{item.inn ? `ИНН ${item.inn}` : item.address}</option>)}</datalist>
           <datalist id="recent-client-inns">{recentClients.filter((item) => item.inn).map((item) => <option key={`${item.inn}-${item.name}`} value={item.inn}>{item.name}</option>)}</datalist>
         </div>
@@ -405,13 +405,13 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
           const validation = itemValidations[index];
           return <article className="product" key={item.id}>
             <div className="product-head"><b>{String(index + 1).padStart(2, "0")}</b>
-              <select value={item.productCode} onChange={(event) => {
+              <label className="product-type-label" htmlFor={`item-${item.id}-product-type`}><span>Тип изделия</span><select id={`item-${item.id}-product-type`} value={item.productCode} onChange={(event) => {
                 const nextProduct = initialCatalog.products.find((candidate) => candidate.code === event.target.value)!;
                 updateItem(item.id, { productCode: nextProduct.code, dimensions: blankDimensions(nextProduct) });
               }}>
                 {initialCatalog.products.map((candidate) => <option key={candidate.code} value={candidate.code}>{candidate.name}</option>)}
-              </select>
-              <button className="remove" type="button" aria-label="Удалить позицию" onClick={() => {
+              </select></label>
+              <button className="remove" type="button" aria-label={`Удалить позицию ${index + 1}`} disabled={items.length === 1} title={items.length === 1 ? "В счёте должна остаться хотя бы одна позиция" : "Удалить позицию"} onClick={() => {
                 if (items.length > 1) { invalidate(); setItems((current) => current.filter((candidate) => candidate.id !== item.id)); }
               }}>×</button>
             </div>

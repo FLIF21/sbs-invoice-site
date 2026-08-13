@@ -69,6 +69,8 @@ test("reload сохраняет черновик, а PDF и Excel использ
   await page.getByLabel("Адрес").fill("Москва, длинный тестовый адрес, дом 1");
   await page.getByLabel("Проект").fill("E2E проект");
   await page.getByLabel("№ заявки").fill("E2E-42");
+  const issueDate = await page.getByLabel("Дата", { exact: true }).inputValue();
+  await page.getByLabel("Требуется к").fill(issueDate);
   await page.getByLabel("Ширина A, мм").fill("400,5");
   await page.getByLabel("Ширина B, мм").fill("250");
   await page.getByLabel("Длина L, мм").fill("1500");
@@ -81,7 +83,19 @@ test("reload сохраняет черновик, а PDF и Excel использ
   await page.reload();
   await expect(page.getByLabel("Покупатель")).toHaveValue("ООО «E2E Покупатель»");
   await expect(page.getByLabel("Проект")).toHaveValue("E2E проект");
+  await expect(page.getByLabel("Требуется к")).toHaveValue(issueDate);
   await expect(page.locator("article.product")).toHaveCount(2);
+
+  const totalBeforeRemoval = await page.locator("aside.summary .grand b").textContent();
+  await page.getByRole("button", { name: "Удалить позицию 2" }).click();
+  await expect(page.locator("article.product")).toHaveCount(1);
+  await expect(page.locator("aside.summary .grand b")).not.toHaveText(totalBeforeRemoval ?? "");
+  await expect(page.getByRole("button", { name: "Удалить позицию 1" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Удалить позицию 1" })).toHaveCSS("width", "44px");
+  await page.getByRole("button", { name: /Добавить изделие/ }).click();
+  await page.getByLabel("Ширина A, мм").nth(1).fill("300.5");
+  await page.getByLabel("Ширина B, мм").nth(1).fill("200");
+  await page.getByLabel("Длина L, мм").nth(1).fill("1200");
 
   const pdfDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Скачать счёт в PDF" }).evaluate((button: HTMLButtonElement) => {
@@ -104,3 +118,55 @@ test("reload сохраняет черновик, а PDF и Excel использ
   expect(testInvoices.size).toBe(1);
   expect([...testInvoices.values()]).toEqual([{ id: "invoice-e2e-1", number: "E2E-000001" }]);
 });
+
+test("некорректная дата готовности блокирует экспорт и сохраняется в черновике", async ({ page }) => {
+  await page.goto("/");
+  const today = await page.getByLabel("Дата", { exact: true }).inputValue();
+  const issueDate = new Date(`${today}T12:00:00.000Z`);
+  issueDate.setUTCDate(issueDate.getUTCDate() + 1);
+  const tomorrow = issueDate.toISOString().slice(0, 10);
+
+  await page.getByLabel("Дата", { exact: true }).fill(tomorrow);
+  await page.getByLabel("Требуется к").fill(today);
+
+  await expect(page.getByText("Дата готовности не может быть раньше даты счёта")).toBeVisible();
+  await expect(page.getByLabel("Требуется к")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("button", { name: "Скачать счёт в PDF" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Скачать счёт в Excel" })).toBeDisabled();
+
+  await page.reload();
+  await expect(page.getByLabel("Дата", { exact: true })).toHaveValue(tomorrow);
+  await expect(page.getByLabel("Требуется к")).toHaveValue(today);
+  await expect(page.getByText("Дата готовности не может быть раньше даты счёта")).toBeVisible();
+});
+
+for (const width of [320, 390]) {
+  test(`карточка изделия помещается в экран ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+
+    const productType = page.getByLabel("Тип изделия").first();
+    const remove = page.getByRole("button", { name: "Удалить позицию 1" });
+    await expect(productType).toBeVisible();
+    await expect(remove).toBeDisabled();
+
+    const layout = await page.evaluate(() => {
+      const card = document.querySelector("article.product")!.getBoundingClientRect();
+      const select = document.querySelector<HTMLSelectElement>(".product-head select")!.getBoundingClientRect();
+      const button = document.querySelector<HTMLButtonElement>(".product-head .remove")!.getBoundingClientRect();
+      return {
+        viewport: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        selectLeft: select.left,
+        selectRight: select.right,
+        buttonLeft: button.left,
+        cardLeft: card.left,
+        cardRight: card.right,
+      };
+    });
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport);
+    expect(layout.selectLeft).toBeGreaterThanOrEqual(layout.cardLeft);
+    expect(layout.selectRight).toBeLessThanOrEqual(layout.buttonLeft);
+    expect(layout.cardRight).toBeLessThanOrEqual(layout.viewport);
+  });
+}
