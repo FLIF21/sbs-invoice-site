@@ -58,7 +58,7 @@ const productSeeds = [
     code: "transitionRound",
     name: "Переход прямоугольный → круглый",
     category: "Фасонные изделия",
-    imagePath: "/products/transition.png",
+    imagePath: "/products/transition-round.png",
     defaultDimensions: { width: 400, height: 250, diameter: 300, length: 1000, rail: "20/20" },
     calculationMethod: CalculationMethod.RECTANGULAR_TRANSITION,
     sortOrder: 35,
