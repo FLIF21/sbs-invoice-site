@@ -495,11 +495,6 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
         <div className="system-status" role="status" aria-live="polite" aria-atomic="true">
           {message && message.kind !== "error" && <div className={`form-message ${message.kind}`}>{message.text}</div>}
         </div>
-        <div className="export-actions">
-          <button onClick={() => exportInvoice("pdf")} disabled={!canExport || Boolean(exportStage)}>{exportLabel("pdf")}</button>
-          <button onClick={() => exportInvoice("excel")} disabled={!canExport || Boolean(exportStage)}>{exportLabel("excel")}</button>
-        </div>
-        <small>При первом скачивании счёт сохраняется в системе. Повторное скачивание не создаёт новый номер, пока данные не изменены.</small>
       </aside>
     </section>
     <footer>производство воздуховодов <span>{initialCatalog.company.legalName}</span></footer>

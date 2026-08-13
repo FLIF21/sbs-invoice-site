@@ -76,7 +76,8 @@ test("reload сохраняет черновик, а PDF и Excel использ
   await expect(page.getByLabel("Ширина B, мм")).toHaveValue("");
   await expect(page.getByLabel("Длина L, мм")).toHaveValue("");
   await expect(page.getByText("Заполните размеры изделия").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Скачать счёт в PDF" })).toBeDisabled();
+  await expect(page.locator("aside.summary").getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Скачать PDF" })).toBeDisabled();
 
   await page.getByLabel("Покупатель").fill("ООО «E2E Покупатель»");
   await page.getByLabel("ИНН").fill("1234567890");
@@ -116,7 +117,7 @@ test("reload сохраняет черновик, а PDF и Excel использ
   await page.getByLabel("Длина L, мм").nth(1).fill("1200");
 
   const pdfDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Скачать счёт в PDF" }).evaluate((button: HTMLButtonElement) => {
+  await page.getByRole("button", { name: "Скачать PDF" }).evaluate((button: HTMLButtonElement) => {
     button.click();
     button.click();
   });
@@ -127,7 +128,7 @@ test("reload сохраняет черновик, а PDF и Excel использ
   await page.reload();
   await expect(page.getByLabel("Номер счёта")).toHaveValue("E2E-000001");
   const excelDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Скачать счёт в Excel" }).click();
+  await page.getByRole("button", { name: "Скачать Excel" }).click();
   const excelFile = await excelDownload;
   await excelFile.cancel();
   await expect(page.getByText("Excel скачан. Счёт № E2E-000001")).toBeVisible();
@@ -144,16 +145,16 @@ test("даты связаны с формой, блокируют экспорт
   await setDateInput(page, "Дата", "2026-08-13");
   await setDateInput(page, "Требуется к", "2026-08-13");
   await expect(page.getByLabel("Требуется к")).toHaveAttribute("aria-invalid", "false");
-  await expect(page.getByRole("button", { name: "Скачать счёт в PDF" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Скачать PDF" })).toBeEnabled();
 
   await setDateInput(page, "Требуется к", "2026-08-20");
   await expect(page.getByLabel("Требуется к")).toHaveValue("2026-08-20");
-  await expect(page.getByRole("button", { name: "Скачать счёт в Excel" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Скачать Excel" })).toBeEnabled();
 
   await page.reload();
   await expect(page.getByLabel("Дата", { exact: true })).toHaveValue("2026-08-13");
   await expect(page.getByLabel("Требуется к")).toHaveValue("2026-08-20");
-  await expect(page.getByRole("button", { name: "Скачать счёт в PDF" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Скачать PDF" })).toBeEnabled();
 
   await setDateInput(page, "Дата", "2026-08-20");
   await expect(page.getByLabel("Требуется к")).toHaveAttribute("min", "2026-08-20");
@@ -163,8 +164,8 @@ test("даты связаны с формой, блокируют экспорт
 
   await expect(page.locator("#invoice-due-date-error")).toHaveText("Дата готовности не может быть раньше даты счёта");
   await expect(page.getByLabel("Требуется к")).toHaveAttribute("aria-invalid", "true");
-  await expect(page.getByRole("button", { name: "Скачать счёт в PDF" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Скачать счёт в Excel" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Скачать PDF" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Скачать Excel" })).toBeDisabled();
 });
 
 for (const width of [320, 360, 390, 700]) {

@@ -24,12 +24,10 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .total-card { background:var(--dark); color:white; padding:28px; box-shadow:13px 13px 0 var(--acid); }
 .total-card span,.total-card small { display:block; color:#b8c3be; }
 .total-card strong { display:block; font-size:clamp(29px,3vw,44px); margin:8px 0; letter-spacing:-.04em; }
-.total-card button,.summary button { width:100%; border:0; background:var(--acid); color:#17201d; margin-top:24px; padding:15px 17px; font-weight:800; text-align:left; display:flex; justify-content:space-between; }
-.total-card button:disabled,.summary button:disabled { opacity:.6; }
+.total-card button { width:100%; border:0; background:var(--acid); color:#17201d; margin-top:24px; padding:15px 17px; font-weight:800; text-align:left; display:flex; justify-content:space-between; }
+.total-card button:disabled { opacity:.6; }
 .export-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .export-actions button+button { background:#fff; }
-.summary .export-actions { display:block; }
-.summary .export-actions button+button { margin-top:10px; background:var(--dark); color:#fff; }
 .workspace { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:22px; padding:30px 4vw 70px; max-width:1500px; margin:auto; align-items:start; }
 .panel { grid-column:1; background:#fff; border:1px solid var(--line); padding:28px; }
 .section-title { display:flex; gap:15px; align-items:flex-start; margin-bottom:25px; }
@@ -74,7 +72,6 @@ textarea { min-height:70px; resize:vertical; }
 .summary>div b { color:var(--ink); text-align:right; }
 .summary .grand { margin-top:10px; padding:18px 0; border-top:2px solid var(--ink); font-size:16px; }
 .summary .grand b { font-size:20px; }
-.summary small { display:block; color:#59645f; font-size:12px; line-height:1.5; margin-top:14px; }
 .summary .form-message { display:block; margin:12px 0 0; padding:11px; background:#edf6df; color:#43602a; font-size:11px; line-height:1.4; }
 .summary .form-message.error { background:#fff0ed; color:#a43f32; }
 .summary .form-message.info { background:#eef2ef; color:#53605a; }
