@@ -451,7 +451,6 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
             <div className="product-body">
               <figure className="product-photo">
                 {product.imagePath && <Image src={product.imagePath} alt={product.name} width={960} height={640} loading="eager" unoptimized />}
-                <figcaption>{product.name}</figcaption>
               </figure>
               <div className="item-grid">
                 {isCustom
