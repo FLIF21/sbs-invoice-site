@@ -65,9 +65,7 @@ describe("invoiceInputSchema", () => {
   });
 
   it("отклоняет дату в прошлом", () => {
-    const past = new Date(`${today}T12:00:00.000Z`);
-    past.setUTCDate(past.getUTCDate() - 1);
-    const result = invoiceInputSchema.safeParse({ ...validInvoice, issueDate: past.toISOString().slice(0, 10) });
+    const result = invoiceInputSchema.safeParse({ ...validInvoice, issueDate: "2026-08-12" });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.issues[0]).toMatchObject({ path: ["issueDate"] });

@@ -8,7 +8,14 @@ import { calculateQuote } from "@/lib/domain/pricing";
 import { formatArea, formatRub } from "@/lib/domain/format";
 import type { InvoiceDocument, ProductDimensions, PublicCatalog, QuoteItemInput } from "@/lib/domain/types";
 import { downloadInvoicePdf } from "@/lib/client/pdf-export";
-import { invoiceDateError, todayInMoscow } from "@/lib/validation/dates";
+import {
+  canonicalDateValue,
+  dueDateValidationError,
+  invoiceDateError,
+  issueDateValidationError,
+  minimumDueDate,
+  todayInMoscow,
+} from "@/lib/validation/dates";
 import {
   MAX_ANGLE_VALUE,
   MAX_DIMENSION_VALUE,
@@ -155,6 +162,35 @@ function NumberField({ id, label, value, onChange, error, integer = false }: {
   />{error && <small className="field-error" id={errorId} role="alert">{error}</small>}</label>;
 }
 
+function DateField({ id, label, value, min, error, onChange }: {
+  id: string;
+  label: string;
+  value: string;
+  min: string;
+  error?: string;
+  onChange: (value: string) => void;
+}) {
+  const errorId = `${id}-error`;
+  const lastEmittedValue = useRef(value);
+  useEffect(() => { lastEmittedValue.current = value; }, [value]);
+  const handleValue = (nextValue: string) => {
+    const canonicalValue = canonicalDateValue(nextValue);
+    if (lastEmittedValue.current === canonicalValue) return;
+    lastEmittedValue.current = canonicalValue;
+    onChange(canonicalValue);
+  };
+  return <label htmlFor={id}>{label}<input
+    id={id}
+    type="date"
+    min={min}
+    value={value}
+    aria-invalid={Boolean(error)}
+    aria-describedby={error ? errorId : undefined}
+    onInput={(event) => handleValue(event.currentTarget.value)}
+    onChange={(event) => handleValue(event.currentTarget.value)}
+  />{error && <small className="field-error" id={errorId} role="alert">{error}</small>}</label>;
+}
+
 export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }) {
   const [items, setItems] = useState<EditableItem[]>(() => [makeItem(initialCatalog, 1)]);
   const [meta, setMeta] = useState<InvoiceMeta>(emptyMeta);
@@ -231,18 +267,15 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
 
   const today = todayInMoscow();
   const dateError = invoiceDateError(meta.issueDate, meta.dueDate, today);
-  const issueDateError = !meta.issueDate
-    ? "Укажите дату счёта"
-    : meta.issueDate < today ? "Дата счёта не может быть в прошлом" : "";
-  const dueDateError = meta.dueDate && meta.dueDate < today
-    ? "Дата готовности не может быть в прошлом"
-    : meta.dueDate && meta.dueDate < meta.issueDate ? "Дата готовности не может быть раньше даты счёта" : "";
+  const issueDateError = issueDateValidationError(meta.issueDate, today);
+  const dueDateError = dueDateValidationError(meta.issueDate, meta.dueDate, today);
+  const dueDateMin = minimumDueDate(meta.issueDate, today);
   const clientError = client.name.trim().length < 2 ? "Укажите название покупателя" : "";
   const clientFieldError = calculation.error ? "" : clientError;
-  const formError = savedInvoice ? "" : calculation.error || dateError || clientError;
-  const canExport = Boolean(savedInvoice) || (!formError
+  const formError = calculation.error || dateError || clientError;
+  const canExport = !formError
     && calculation.quote.lines.length === items.length
-    && calculation.quote.total > 0);
+    && calculation.quote.total > 0;
 
   const invalidate = () => {
     idempotencyKeyRef.current = newIdempotencyKey();
@@ -277,8 +310,8 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
   };
 
   async function ensureInvoice() {
-    if (savedInvoice) return savedInvoice;
     if (!canExport) throw new Error(formError || "Заполните обязательные поля");
+    if (savedInvoice) return savedInvoice;
     setExportStage("saving");
     const response = await fetch("/api/public/invoices", {
       method: "POST",
@@ -375,7 +408,7 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
         <div className="section-title"><span>01</span><div><h2>Данные счёта</h2><p>Номер присваивается автоматически при первом скачивании</p></div></div>
         <div className="form-grid">
           <label>Номер счёта<input value={savedInvoice?.number ?? "Будет присвоен после сохранения"} readOnly /></label>
-          <label htmlFor="invoice-issue-date">Дата<input id="invoice-issue-date" type="date" min={today} aria-invalid={Boolean(issueDateError)} aria-describedby={issueDateError ? "invoice-issue-date-error" : undefined} value={meta.issueDate} onChange={(event) => updateMeta({ issueDate: event.target.value })} />{issueDateError && <small className="field-error" id="invoice-issue-date-error" role="alert">{issueDateError}</small>}</label>
+          <DateField id="invoice-issue-date" label="Дата" min={today} value={meta.issueDate} error={issueDateError} onChange={(issueDate) => updateMeta({ issueDate })} />
           <label>Проект<input placeholder="Название или шифр" value={meta.project} onChange={(event) => updateMeta({ project: event.target.value })} /></label>
           <label>№ заявки<input placeholder="Например, 260166" value={meta.requestNumber} onChange={(event) => updateMeta({ requestNumber: event.target.value })} /></label>
           <label className="wide">Покупатель<input list="recent-client-names" autoComplete="organization" placeholder="Название организации" aria-invalid={Boolean(clientFieldError)} value={client.name} onChange={(event) => updateClientFromSuggestion("name", event.target.value)} />{recentClients.length > 0 && <small className="field-hint">Выберите ранее сохранённые реквизиты из подсказки</small>}{clientFieldError && <small className="field-error" role="alert">{clientFieldError}</small>}</label>
@@ -385,7 +418,7 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
           <label>Телефон<input type="tel" value={client.phone} onChange={(event) => updateClient({ phone: event.target.value })} /></label>
           <label>Email<input type="email" value={client.email} onChange={(event) => updateClient({ email: event.target.value })} /></label>
           <label>Заявитель<input placeholder="ФИО" value={meta.applicant} onChange={(event) => updateMeta({ applicant: event.target.value })} /></label>
-          <label htmlFor="invoice-due-date">Требуется к<input id="invoice-due-date" type="date" min={meta.issueDate > today ? meta.issueDate : today} aria-invalid={Boolean(dueDateError)} aria-describedby={dueDateError ? "invoice-due-date-error" : undefined} value={meta.dueDate} onChange={(event) => updateMeta({ dueDate: event.target.value })} />{dueDateError && <small className="field-error" id="invoice-due-date-error" role="alert">{dueDateError}</small>}</label>
+          <DateField id="invoice-due-date" label="Требуется к" min={dueDateMin} value={meta.dueDate} error={dueDateError} onChange={(dueDate) => updateMeta({ dueDate })} />
           <datalist id="recent-client-names">{recentClients.map((item) => <option key={`${item.inn}-${item.name}`} value={item.name}>{item.inn ? `ИНН ${item.inn}` : item.address}</option>)}</datalist>
           <datalist id="recent-client-inns">{recentClients.filter((item) => item.inn).map((item) => <option key={`${item.inn}-${item.name}`} value={item.inn}>{item.name}</option>)}</datalist>
         </div>

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { InvoiceDocument, ProductDimensions, PublicCatalog } from "../domain/types";
+import { isCanonicalDate } from "../validation/dates";
 
 export const INVOICE_DRAFT_STORAGE_KEY = "sbs-invoice-draft-v1";
 export const INVOICE_DRAFT_VERSION = 1;
@@ -40,8 +41,9 @@ const editableItemSchema = z.object({
   id: z.number().int().positive(), productCode: z.string().min(1).max(80), thicknessCode: z.string().min(1).max(20),
   quantity: numericValue, dimensions: dimensionsSchema,
 });
+const canonicalDate = z.string().refine(isCanonicalDate);
 const metaSchema = z.object({
-  issueDate: z.string(), dueDate: z.string(), project: z.string(), requestNumber: z.string(), applicant: z.string(), notes: z.string(),
+  issueDate: canonicalDate, dueDate: z.union([canonicalDate, z.literal("")]), project: z.string(), requestNumber: z.string(), applicant: z.string(), notes: z.string(),
 });
 const clientSchema = z.object({
   name: z.string(), inn: z.string(), kpp: z.string(), address: z.string(), phone: z.string(), email: z.string(),

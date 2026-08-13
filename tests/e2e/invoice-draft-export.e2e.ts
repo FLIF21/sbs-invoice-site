@@ -1,5 +1,20 @@
 import { expect, test } from "@playwright/test";
 
+async function setDateInput(page: import("@playwright/test").Page, label: string, value: string) {
+  await page.getByLabel(label, { exact: true }).evaluate((element: HTMLInputElement, nextValue) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    setter?.call(element, nextValue);
+    element.dispatchEvent(new InputEvent("input", { bubbles: true, data: nextValue, inputType: "insertText" }));
+  }, value);
+}
+
+async function fillValidInvoice(page: import("@playwright/test").Page) {
+  await page.getByLabel("Покупатель").fill("ООО «Проверка дат»");
+  await page.getByLabel("Ширина A, мм").fill("400");
+  await page.getByLabel("Ширина B, мм").fill("250");
+  await page.getByLabel("Длина L, мм").fill("1500");
+}
+
 test("reload сохраняет черновик, а PDF и Excel используют один счёт", async ({ page }) => {
   const testInvoices = new Map<string, { id: string; number: string }>();
   let postRequests = 0;
@@ -119,25 +134,34 @@ test("reload сохраняет черновик, а PDF и Excel использ
   expect([...testInvoices.values()]).toEqual([{ id: "invoice-e2e-1", number: "E2E-000001" }]);
 });
 
-test("некорректная дата готовности блокирует экспорт и сохраняется в черновике", async ({ page }) => {
+test("даты связаны с формой, блокируют экспорт и сохраняются без сдвига", async ({ page }) => {
   await page.goto("/");
-  const today = await page.getByLabel("Дата", { exact: true }).inputValue();
-  const issueDate = new Date(`${today}T12:00:00.000Z`);
-  issueDate.setUTCDate(issueDate.getUTCDate() + 1);
-  const tomorrow = issueDate.toISOString().slice(0, 10);
+  await fillValidInvoice(page);
 
-  await page.getByLabel("Дата", { exact: true }).fill(tomorrow);
-  await page.getByLabel("Требуется к").fill(today);
+  await setDateInput(page, "Дата", "2026-08-13");
+  await setDateInput(page, "Требуется к", "2026-08-13");
+  await expect(page.getByLabel("Требуется к")).toHaveAttribute("aria-invalid", "false");
+  await expect(page.getByRole("button", { name: "Скачать счёт в PDF" })).toBeEnabled();
 
-  await expect(page.getByText("Дата готовности не может быть раньше даты счёта")).toBeVisible();
+  await setDateInput(page, "Требуется к", "2026-08-20");
+  await expect(page.getByLabel("Требуется к")).toHaveValue("2026-08-20");
+  await expect(page.getByRole("button", { name: "Скачать счёт в Excel" })).toBeEnabled();
+
+  await page.reload();
+  await expect(page.getByLabel("Дата", { exact: true })).toHaveValue("2026-08-13");
+  await expect(page.getByLabel("Требуется к")).toHaveValue("2026-08-20");
+  await expect(page.getByRole("button", { name: "Скачать счёт в PDF" })).toBeEnabled();
+
+  await setDateInput(page, "Дата", "2026-08-20");
+  await expect(page.getByLabel("Требуется к")).toHaveAttribute("min", "2026-08-20");
+
+  await setDateInput(page, "Дата", "2026-08-13");
+  await setDateInput(page, "Требуется к", "2026-08-12");
+
+  await expect(page.locator("#invoice-due-date-error")).toHaveText("Дата готовности не может быть раньше даты счёта");
   await expect(page.getByLabel("Требуется к")).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("button", { name: "Скачать счёт в PDF" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Скачать счёт в Excel" })).toBeDisabled();
-
-  await page.reload();
-  await expect(page.getByLabel("Дата", { exact: true })).toHaveValue(tomorrow);
-  await expect(page.getByLabel("Требуется к")).toHaveValue(today);
-  await expect(page.getByText("Дата готовности не может быть раньше даты счёта")).toBeVisible();
 });
 
 for (const width of [320, 390]) {

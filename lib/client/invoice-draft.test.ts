@@ -19,6 +19,7 @@ describe("invoice draft storage", () => {
   it("восстанавливает все поля и устойчивый ключ запроса", () => {
     const restored = parseInvoiceDraft(serializeInvoiceDraft(draft), catalog);
     expect(restored).toMatchObject({ version: INVOICE_DRAFT_VERSION, ...draft });
+    expect(restored?.meta.dueDate).toBe("2026-08-20");
   });
 
   it("безопасно отклоняет повреждённый или несовместимый черновик", () => {
