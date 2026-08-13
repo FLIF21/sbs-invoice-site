@@ -100,6 +100,9 @@ test("reload сохраняет черновик, а PDF и Excel использ
   await expect(page.getByLabel("Проект")).toHaveValue("E2E проект");
   await expect(page.getByLabel("Требуется к")).toHaveValue(issueDate);
   await expect(page.locator("article.product")).toHaveCount(2);
+  await expect(page.getByRole("status")).toHaveAttribute("aria-live", "polite");
+  await expect(page.getByRole("status")).toHaveAttribute("aria-atomic", "true");
+  await expect(page.getByRole("status")).toContainText("Черновик восстановлен");
 
   const totalBeforeRemoval = await page.locator("aside.summary .grand b").textContent();
   await page.getByRole("button", { name: "Удалить позицию 2" }).click();
@@ -164,8 +167,8 @@ test("даты связаны с формой, блокируют экспорт
   await expect(page.getByRole("button", { name: "Скачать счёт в Excel" })).toBeDisabled();
 });
 
-for (const width of [320, 390]) {
-  test(`карточка изделия помещается в экран ${width}px`, async ({ page }) => {
+for (const width of [320, 360, 390, 700]) {
+  test(`интерактивные области и карточка помещаются в экран ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
 
@@ -173,24 +176,65 @@ for (const width of [320, 390]) {
     const remove = page.getByRole("button", { name: "Удалить позицию 1" });
     await expect(productType).toBeVisible();
     await expect(remove).toBeDisabled();
+    await productType.selectOption({ label: "Переход прямоугольный → прямоугольный" });
+    await expect(page.locator(".selected-product-name")).toHaveText("Переход прямоугольный → прямоугольный");
 
     const layout = await page.evaluate(() => {
       const card = document.querySelector("article.product")!.getBoundingClientRect();
       const select = document.querySelector<HTMLSelectElement>(".product-head select")!.getBoundingClientRect();
       const button = document.querySelector<HTMLButtonElement>(".product-head .remove")!.getBoundingClientRect();
+      const selectedName = document.querySelector<HTMLElement>(".selected-product-name")!;
+      const interactive = [...document.querySelectorAll<HTMLElement>(".public-site button,.public-site input,.public-site select,.public-site textarea,.public-site a")]
+        .filter((element) => getComputedStyle(element).display !== "none")
+        .map((element) => {
+          const bounds = element.getBoundingClientRect();
+          return { tag: element.tagName, name: element.getAttribute("aria-label") || element.textContent?.trim() || "", width: bounds.width, height: bounds.height };
+        });
       return {
         viewport: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
         selectLeft: select.left,
         selectRight: select.right,
+        selectTop: select.top,
         buttonLeft: button.left,
+        buttonBottom: button.bottom,
         cardLeft: card.left,
         cardRight: card.right,
+        tooSmall: interactive.filter((element) => element.width < 44 || element.height < 44),
+        selectedNameFits: selectedName.scrollWidth <= selectedName.clientWidth && selectedName.scrollHeight <= selectedName.clientHeight,
       };
     });
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport);
     expect(layout.selectLeft).toBeGreaterThanOrEqual(layout.cardLeft);
-    expect(layout.selectRight).toBeLessThanOrEqual(layout.buttonLeft);
+    expect(layout.selectRight).toBeLessThanOrEqual(layout.cardRight);
+    expect(layout.selectTop).toBeGreaterThanOrEqual(layout.buttonBottom);
     expect(layout.cardRight).toBeLessThanOrEqual(layout.viewport);
+    expect(layout.tooSmall).toEqual([]);
+    expect(layout.selectedNameFits).toBe(true);
   });
 }
+
+test("интерфейс сохраняет reflow при масштабе 200%", async ({ page }) => {
+  // Browser zoom 200% at 700 CSS pixels gives an effective layout viewport of 350px.
+  await page.setViewportSize({ width: 350, height: 900 });
+  await page.goto("/");
+
+  const layout = await page.evaluate(() => {
+    const interactive = [...document.querySelectorAll<HTMLElement>(".public-site button,.public-site input,.public-site select,.public-site textarea,.public-site a")]
+      .filter((element) => getComputedStyle(element).display !== "none")
+      .map((element) => {
+        const bounds = element.getBoundingClientRect();
+        return { width: bounds.width, height: bounds.height };
+      });
+    return {
+      viewport: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      tooSmall: interactive.filter((element) => element.width < 44 || element.height < 44),
+      productTypeVisible: document.querySelector<HTMLSelectElement>(".product-head select")!.getBoundingClientRect().width > 0,
+    };
+  });
+
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport);
+  expect(layout.tooSmall).toEqual([]);
+  expect(layout.productTypeVisible).toBe(true);
+});

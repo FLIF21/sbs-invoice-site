@@ -438,12 +438,12 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
           const validation = itemValidations[index];
           return <article className="product" key={item.id}>
             <div className="product-head"><b>{String(index + 1).padStart(2, "0")}</b>
-              <label className="product-type-label" htmlFor={`item-${item.id}-product-type`}><span>Тип изделия</span><select id={`item-${item.id}-product-type`} value={item.productCode} onChange={(event) => {
+              <label className="product-type-label" htmlFor={`item-${item.id}-product-type`}><span>Тип изделия</span><span className="product-select-wrap"><select id={`item-${item.id}-product-type`} value={item.productCode} onChange={(event) => {
                 const nextProduct = initialCatalog.products.find((candidate) => candidate.code === event.target.value)!;
                 updateItem(item.id, { productCode: nextProduct.code, dimensions: blankDimensions(nextProduct) });
               }}>
                 {initialCatalog.products.map((candidate) => <option key={candidate.code} value={candidate.code}>{candidate.name}</option>)}
-              </select></label>
+              </select><span className="selected-product-name" aria-hidden="true">{product.name}</span></span></label>
               <button className="remove" type="button" aria-label={`Удалить позицию ${index + 1}`} disabled={items.length === 1} title={items.length === 1 ? "В счёте должна остаться хотя бы одна позиция" : "Удалить позицию"} onClick={() => {
                 if (items.length > 1) { invalidate(); setItems((current) => current.filter((candidate) => candidate.id !== item.id)); }
               }}>×</button>
@@ -491,7 +491,11 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
         <div><span>Без НДС</span><b>{formatRub(calculation.quote.subtotal)}</b></div>
         <div><span>{initialCatalog.tax.enabled ? `НДС ${initialCatalog.tax.rate}%` : "НДС отключён"}</span><b>{formatRub(calculation.quote.taxAmount)}</b></div>
         <div className="grand"><span>Итого</span><b>{formatRub(calculation.quote.total)}</b></div>
-        {(formError || message) && <div className={`form-message ${formError || message?.kind === "error" ? "error" : message?.kind ?? ""}`}>{formError || message?.text}</div>}
+        {formError && <div className="form-message error">{formError}</div>}
+        {message?.kind === "error" && <div className="form-message error" role="alert">{message.text}</div>}
+        <div className="system-status" role="status" aria-live="polite" aria-atomic="true">
+          {message && message.kind !== "error" && <div className={`form-message ${message.kind}`}>{message.text}</div>}
+        </div>
         <div className="export-actions">
           <button onClick={() => exportInvoice("pdf")} disabled={!canExport || Boolean(exportStage)}>{exportLabel("pdf")}</button>
           <button onClick={() => exportInvoice("excel")} disabled={!canExport || Boolean(exportStage)}>{exportLabel("excel")}</button>
