@@ -67,7 +67,7 @@ export async function getAdminBootstrap(user: { permissions: PermissionKey[] }) 
   const canManageBackups = user.permissions.includes(PermissionKey.MANAGE_BACKUPS);
   const [dashboard, products, thicknesses, coefficients, tax, company, numbering, invoices, clients, users, audit, backups] = await Promise.all([
     user.permissions.includes(PermissionKey.VIEW_DASHBOARD) ? getDashboard() : null,
-    db.productType.findMany({ orderBy: { sortOrder: "asc" }, include: { rates: { include: { thickness: true }, orderBy: [{ tierKey: "asc" }, { thickness: { sortOrder: "asc" } }] } } }),
+    db.productType.findMany({ where: { active: true, code: { not: "custom" } }, orderBy: { sortOrder: "asc" }, include: { rates: { where: { active: true }, include: { thickness: true }, orderBy: [{ tierKey: "asc" }, { thickness: { sortOrder: "asc" } }] } } }),
     db.thickness.findMany({ orderBy: { sortOrder: "asc" }, include: { metalPrice: true } }),
     db.coefficient.findMany({ orderBy: { sortOrder: "asc" } }),
     db.taxSetting.findUniqueOrThrow({ where: { id: "default" } }),

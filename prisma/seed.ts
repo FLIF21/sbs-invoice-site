@@ -137,7 +137,6 @@ async function seed() {
         defaultDimensions: productSeed.defaultDimensions,
         calculationMethod: productSeed.calculationMethod,
         sortOrder: productSeed.sortOrder,
-        active: true,
       },
       create: {
         code: productSeed.code,

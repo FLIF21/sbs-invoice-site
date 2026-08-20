@@ -91,7 +91,7 @@ export function AdminConsole() {
         {error && <div className="admin-alert error">{error}</div>}
         {notice && <div className="admin-toast">{notice}</div>}
         {currentActive === "dashboard" && bootstrap.data.dashboard && <DashboardSection dashboard={bootstrap.data.dashboard} />}
-        {(["pricing", "metal", "coefficients"] as Section[]).includes(currentActive) && <CatalogSection key={`${currentActive}-${bootstrap.data.products.map((product) => product.id).join("-")}`} section={currentActive as "pricing" | "metal" | "coefficients"} data={bootstrap.data} onSaved={async (message) => { notify(message); await load(true); }} />}
+        {(["pricing", "metal", "coefficients"] as Section[]).includes(currentActive) && <CatalogSection key={`${currentActive}-${bootstrap.data.products.map((product) => `${product.id}:${product.code}:${product.name}:${product.category}:${product.formulaKey}`).join("-")}`} section={currentActive as "pricing" | "metal" | "coefficients"} data={bootstrap.data} onSaved={async (message) => { notify(message); await load(true); }} />}
         {(["tax", "company", "numbering", "backups"] as Section[]).includes(currentActive) && <SettingsSection key={currentActive} section={currentActive as "tax" | "company" | "numbering" | "backups"} data={bootstrap.data} onSaved={async (message) => { notify(message); await load(true); }} />}
         {(["invoices", "clients", "users", "audit"] as Section[]).includes(currentActive) && <RecordsSection key={currentActive} section={currentActive as "invoices" | "clients" | "users" | "audit"} data={bootstrap.data} user={bootstrap.user} onSaved={async (message) => { notify(message); await load(true); }} />}
       </div>

@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       db.taxSetting.findUniqueOrThrow({ where: { id: "default" } }),
       db.productType.findFirst({ orderBy: { sortOrder: "desc" }, select: { sortOrder: true } }),
     ]);
-    if (existing) throw new ApiError(409, "Изделие с таким кодом уже существует");
+    if (existing?.active) throw new ApiError(409, "Изделие с таким кодом уже существует");
 
     const configuredIds = new Set(data.rates.map((rate) => rate.thicknessId));
     if (thicknesses.some((thickness) => !configuredIds.has(thickness.id)) || configuredIds.size !== thicknesses.length) {
@@ -43,29 +43,49 @@ export async function POST(request: NextRequest) {
     });
 
     const product = await db.$transaction(async (tx) => {
-      const created = await tx.productType.create({
-        data: {
-          code: data.code,
-          name: data.name,
-          category: data.category,
-          description: formula.label,
-          imagePath: formula.imagePath,
-          defaultDimensions: formula.defaultDimensions as Prisma.InputJsonObject,
-          calculationMethod: formula.calculationMethod,
-          sortOrder: (lastProduct?.sortOrder ?? 0) + 10,
-          rates: {
-            create: rates.map((rate) => ({
-              thicknessId: rate.thicknessId,
-              tierKey: "default",
-              materialMultiplier: rate.materialMultiplier,
-              laborCost: new Prisma.Decimal(rate.laborCost),
-            })),
+      const productData = {
+        code: data.code,
+        name: data.name,
+        category: data.category,
+        description: formula.label,
+        imagePath: formula.imagePath,
+        defaultDimensions: formula.defaultDimensions as Prisma.InputJsonObject,
+        calculationMethod: formula.calculationMethod,
+        sortOrder: (lastProduct?.sortOrder ?? 0) + 10,
+        active: true,
+      };
+      if (existing) await tx.productRate.deleteMany({ where: { productTypeId: existing.id } });
+      const created = existing
+        ? await tx.productType.update({
+          where: { id: existing.id },
+          data: {
+            ...productData,
+            rates: {
+              create: rates.map((rate) => ({
+                thicknessId: rate.thicknessId,
+                tierKey: "default",
+                materialMultiplier: rate.materialMultiplier,
+                laborCost: new Prisma.Decimal(rate.laborCost),
+              })),
+            },
           },
-        },
-      });
+        })
+        : await tx.productType.create({
+          data: {
+            ...productData,
+            rates: {
+              create: rates.map((rate) => ({
+                thicknessId: rate.thicknessId,
+                tierKey: "default",
+                materialMultiplier: rate.materialMultiplier,
+                laborCost: new Prisma.Decimal(rate.laborCost),
+              })),
+            },
+          },
+        });
       await writeAudit({
         actorId: user.id,
-        action: "CREATE",
+        action: existing ? "RESTORE" : "CREATE",
         entityType: "ProductType",
         entityId: created.id,
         after: { code: created.code, name: created.name, formulaKey: data.formulaKey, rates: data.rates },

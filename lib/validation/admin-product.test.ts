@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createProductSchema } from "./admin-product";
+import { createProductSchema, updateProductSchema } from "./admin-product";
 
 const validProduct = {
   code: "ductExtra",
@@ -23,5 +23,11 @@ describe("createProductSchema", () => {
     const result = createProductSchema.safeParse({ ...validProduct, rates: [validProduct.rates[0], validProduct.rates[0]] });
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.issues[0]).toMatchObject({ path: ["rates"], message: "Толщина не должна повторяться" });
+  });
+
+  it("проверяет редактируемые реквизиты изделия без массива цен", () => {
+    const details = { code: validProduct.code, name: "Воздуховод обновлённый", category: validProduct.category, formulaKey: validProduct.formulaKey };
+    expect(updateProductSchema.parse(details)).toEqual(details);
+    expect(updateProductSchema.safeParse({ ...details, name: "" }).success).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import type { SectionProps } from "./AdminConsole";
 import { adminRequest, jsonRequest } from "./admin-api";
 
 type Props = SectionProps & { section: "pricing" | "metal" | "coefficients" };
+type AdminProduct = Props["data"]["products"][number];
 type NewProductDraft = {
   code: string;
   name: string;
@@ -13,6 +14,7 @@ type NewProductDraft = {
   formulaKey: ProductFormulaKey;
   rates: Array<{ thicknessId: string; thicknessLabel: string; targetGrossRate: string; materialMultiplier: string }>;
 };
+type EditProductDraft = Pick<AdminProduct, "id" | "code" | "name" | "category" | "formulaKey">;
 
 function SaveBar({ busy, error, onSave }: { busy: boolean; error: string; onSave: () => void }) {
   return <div className="save-bar">{error ? <span className="save-error">{error}</span> : <span>Изменения применятся к новым расчётам сразу после сохранения.</span>}<button className="primary-button" onClick={onSave} disabled={busy}>{busy ? "Сохраняем…" : "Сохранить изменения"}</button></div>;
@@ -28,6 +30,10 @@ export function CatalogSection({ section, data, onSaved }: Props) {
   const [newProduct, setNewProduct] = useState<NewProductDraft | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [editProduct, setEditProduct] = useState<EditProductDraft | null>(null);
+  const [deleteProduct, setDeleteProduct] = useState<AdminProduct | null>(null);
+  const [productActionBusy, setProductActionBusy] = useState(false);
+  const [productActionError, setProductActionError] = useState("");
 
   function openNewProduct() {
     setCreateError("");
@@ -71,6 +77,53 @@ export function CatalogSection({ section, data, onSaved }: Props) {
     }
   }
 
+  function openEditProduct(product: AdminProduct) {
+    setProductActionError("");
+    setEditProduct({
+      id: product.id,
+      code: product.code,
+      name: product.name,
+      category: product.category,
+      formulaKey: product.formulaKey,
+    });
+  }
+
+  async function updateProduct(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editProduct) return;
+    setProductActionBusy(true);
+    setProductActionError("");
+    try {
+      await adminRequest(`/api/admin/products/${encodeURIComponent(editProduct.id)}`, jsonRequest("PUT", {
+        code: editProduct.code,
+        name: editProduct.name,
+        category: editProduct.category,
+        formulaKey: editProduct.formulaKey,
+      }));
+      setEditProduct(null);
+      await onSaved("Изделие обновлено");
+    } catch (reason) {
+      setProductActionError(reason instanceof Error ? reason.message : "Не удалось обновить изделие");
+    } finally {
+      setProductActionBusy(false);
+    }
+  }
+
+  async function removeProduct() {
+    if (!deleteProduct) return;
+    setProductActionBusy(true);
+    setProductActionError("");
+    try {
+      await adminRequest(`/api/admin/products/${encodeURIComponent(deleteProduct.id)}`, jsonRequest("DELETE"));
+      setDeleteProduct(null);
+      await onSaved("Изделие удалено из калькулятора");
+    } catch (reason) {
+      setProductActionError(reason instanceof Error ? reason.message : "Не удалось удалить изделие");
+    } finally {
+      setProductActionBusy(false);
+    }
+  }
+
   async function save() {
     setBusy(true);
     setError("");
@@ -97,7 +150,7 @@ export function CatalogSection({ section, data, onSaved }: Props) {
     <div className="product-formula-list">
       {data.products.map((product) => {
         const formula = productFormulas[product.formulaKey];
-        return <article key={product.id}><div><strong>{product.name}</strong><small>{product.code} · {product.category}</small></div><span>{formula.label}</span><code>{formula.formula}</code></article>;
+        return <article key={product.id}><div><strong>{product.name}</strong><small>{product.code} · {product.category}</small></div><span>{formula.label}</span><code>{formula.formula}</code><div className="product-formula-actions"><button type="button" onClick={() => openEditProduct(product)} aria-label={`Редактировать ${product.name}`}>Редактировать</button><button type="button" className="danger" onClick={() => { setProductActionError(""); setDeleteProduct(product); }} aria-label={`Удалить ${product.name}`}>Удалить</button></div></article>;
       })}
     </div>
     <div className="admin-table-wrap"><table className="admin-table pricing-table"><thead><tr><th>Изделие</th><th>Диапазон</th><th>Толщина</th><th>Доля металла</th><th>Цена за м²</th></tr></thead><tbody>
@@ -119,6 +172,27 @@ export function CatalogSection({ section, data, onSaved }: Props) {
       {createError && <div className="admin-alert error">{createError}</div>}
       <button className="primary-button" disabled={createBusy}>{createBusy ? "Добавляем…" : "Добавить изделие"}</button>
     </form></div>}
+    {editProduct && <div className="modal-backdrop"><form className="admin-modal product-modal" onSubmit={updateProduct}>
+      <button type="button" className="modal-close" aria-label="Закрыть" onClick={() => setEditProduct(null)}>×</button>
+      <h2>Редактировать изделие</h2>
+      <p className="modal-description">Название, категория и метод расчёта обновятся в калькуляторе. Старые счета сохранят исходные данные.</p>
+      <div className="admin-form-grid">
+        <label>Название<input required minLength={2} value={editProduct.name} onChange={(event) => setEditProduct({ ...editProduct, name: event.target.value })} /></label>
+        <label>Код<input required minLength={2} pattern="[A-Za-z][A-Za-z0-9_-]*" value={editProduct.code} onChange={(event) => setEditProduct({ ...editProduct, code: event.target.value })} /></label>
+        <label className="span-2">Категория<input required minLength={2} value={editProduct.category} onChange={(event) => setEditProduct({ ...editProduct, category: event.target.value })} /></label>
+        <label className="span-2">Метод расчёта<select value={editProduct.formulaKey} onChange={(event) => setEditProduct({ ...editProduct, formulaKey: event.target.value as ProductFormulaKey })}>{Object.values(productFormulas).map((formula) => <option value={formula.key} key={formula.key}>{formula.label}</option>)}</select></label>
+        <div className="selected-formula span-2"><span>Формула площади</span><code>{productFormulas[editProduct.formulaKey].formula}</code></div>
+      </div>
+      {productActionError && <div className="admin-alert error">{productActionError}</div>}
+      <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setEditProduct(null)}>Отмена</button><button className="primary-button" disabled={productActionBusy}>{productActionBusy ? "Сохраняем…" : "Сохранить изделие"}</button></div>
+    </form></div>}
+    {deleteProduct && <div className="modal-backdrop"><div className="admin-modal delete-product-modal" role="dialog" aria-modal="true" aria-labelledby="delete-product-title">
+      <button type="button" className="modal-close" aria-label="Закрыть" onClick={() => setDeleteProduct(null)}>×</button>
+      <h2 id="delete-product-title">Удалить изделие?</h2>
+      <p>«{deleteProduct.name}» исчезнет из калькулятора и таблицы цен. Уже созданные счета останутся без изменений.</p>
+      {productActionError && <div className="admin-alert error">{productActionError}</div>}
+      <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setDeleteProduct(null)}>Отмена</button><button type="button" className="danger-button" onClick={removeProduct} disabled={productActionBusy}>{productActionBusy ? "Удаляем…" : "Удалить изделие"}</button></div>
+    </div></div>}
   </section>;
 
   if (section === "metal") return <section className="admin-section">

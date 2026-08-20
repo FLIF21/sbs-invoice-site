@@ -136,6 +136,51 @@ test("новое изделие создаётся с выбранной фор�
   });
 });
 
+test("изделие можно отредактировать и удалить из калькулятора", async ({ page }) => {
+  const requests: Array<{ method: string; body: unknown }> = [];
+  await page.route("**/api/admin/products/e2e-product", async (route) => {
+    requests.push({
+      method: route.request().method(),
+      body: route.request().postData() ? route.request().postDataJSON() : null,
+    });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "e2e-product", ok: true }) });
+  });
+
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/admin");
+  await page.locator(".menu-button").click();
+  await page.getByRole("button", { name: "Цены изделий", exact: true }).click();
+
+  await page.getByRole("button", { name: "Редактировать Воздуховод" }).click();
+  const editModal = page.locator(".product-modal");
+  await expect(editModal.getByRole("heading", { name: "Редактировать изделие" })).toBeVisible();
+  await editModal.getByLabel("Название").fill("Воздуховод усиленный");
+  await editModal.getByLabel("Категория").fill("Воздуховоды на заказ");
+  await editModal.getByLabel("Метод расчёта").selectOption("rectangular-damper");
+  await editModal.getByRole("button", { name: "Сохранить изделие", exact: true }).click();
+  await expect(page.getByText("Изделие обновлено")).toBeVisible();
+
+  await page.getByRole("button", { name: "Удалить Воздуховод" }).click();
+  const deleteModal = page.locator(".delete-product-modal");
+  await expect(deleteModal.getByRole("heading", { name: "Удалить изделие?" })).toBeVisible();
+  await expect(deleteModal).toContainText("Уже созданные счета останутся без изменений");
+  await deleteModal.getByRole("button", { name: "Удалить изделие", exact: true }).click();
+  await expect(page.getByText("Изделие удалено из калькулятора")).toBeVisible();
+
+  expect(requests).toEqual([
+    {
+      method: "PUT",
+      body: {
+        code: "duct",
+        name: "Воздуховод усиленный",
+        category: "Воздуховоды на заказ",
+        formulaKey: "rectangular-damper",
+      },
+    },
+    { method: "DELETE", body: null },
+  ]);
+});
+
 test("статусы счетов отображаются по-русски, сохраняя серверные значения", async ({ page }) => {
   await page.route("**/api/admin/invoices/e2e-invoice", async (route) => {
     await route.fulfill({
