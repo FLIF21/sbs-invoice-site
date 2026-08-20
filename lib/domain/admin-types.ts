@@ -1,4 +1,5 @@
 import type { PermissionName, RoleName } from "./access";
+import type { ProductFormulaKey } from "./product-formulas";
 
 export type AdminUser = {
   id: string;
@@ -20,7 +21,7 @@ export type AdminData = {
   };
   permissionLabels: Record<PermissionName, string>;
   products: Array<{
-    id: string; code: string; name: string; category: string; active: boolean;
+    id: string; code: string; name: string; category: string; active: boolean; formulaKey: ProductFormulaKey;
     rates: Array<{ id: string; productName: string; tierKey: string; minBoundary: number | null; maxBoundary: number | null; thicknessCode: string; materialMultiplier: number; laborCost: number; currentGrossRate: number }>;
   }>;
   thicknesses: Array<{ id: string; code: string; label: string; millimeters: number; costPerSquareMeter: number }>;

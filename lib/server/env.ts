@@ -1,6 +1,11 @@
 import "server-only";
 import { z } from "zod";
 
+const optionalNonEmptyString = z.preprocess(
+  (value) => value === "" ? undefined : value,
+  z.string().min(1).optional(),
+);
+
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32),
@@ -15,6 +20,10 @@ const schema = z.object({
   SMTP_FROM: z.email().optional(),
   RESEND_API_KEY: z.string().min(1).optional(),
   EMAIL_FROM: z.email().optional(),
+  PAYMENT_PROVIDER: z.enum(["disabled", "test", "yookassa"]).optional(),
+  YOOKASSA_SHOP_ID: optionalNonEmptyString,
+  YOOKASSA_SECRET_KEY: optionalNonEmptyString,
+  YOOKASSA_TEST_MODE: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 });
 
 export function getEnv() {

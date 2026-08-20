@@ -5,6 +5,7 @@ export type NumericInputResult =
 export const MAX_DIMENSION_VALUE = 1_000_000;
 export const MAX_ANGLE_VALUE = 360;
 export const MAX_INVOICE_ITEM_QUANTITY = 1_000_000_000;
+export const MIN_RECTANGULAR_WIDTH_MM = 150;
 
 function rawText(value: number | string | undefined) {
   return value === undefined ? "" : String(value).trim();

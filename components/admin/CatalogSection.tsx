@@ -1,10 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { productFormulas, type ProductFormulaKey } from "@/lib/domain/product-formulas";
 import type { SectionProps } from "./AdminConsole";
 import { adminRequest, jsonRequest } from "./admin-api";
 
 type Props = SectionProps & { section: "pricing" | "metal" | "coefficients" };
+type NewProductDraft = {
+  code: string;
+  name: string;
+  category: string;
+  formulaKey: ProductFormulaKey;
+  rates: Array<{ thicknessId: string; thicknessLabel: string; targetGrossRate: string; materialMultiplier: string }>;
+};
 
 function SaveBar({ busy, error, onSave }: { busy: boolean; error: string; onSave: () => void }) {
   return <div className="save-bar">{error ? <span className="save-error">{error}</span> : <span>Изменения применятся к новым расчётам сразу после сохранения.</span>}<button className="primary-button" onClick={onSave} disabled={busy}>{busy ? "Сохраняем…" : "Сохранить изменения"}</button></div>;
@@ -17,6 +25,51 @@ export function CatalogSection({ section, data, onSaved }: Props) {
   const [coefficients, setCoefficients] = useState(data.coefficients);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [newProduct, setNewProduct] = useState<NewProductDraft | null>(null);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  function openNewProduct() {
+    setCreateError("");
+    setNewProduct({
+      code: "",
+      name: "",
+      category: "",
+      formulaKey: "rectangular-duct",
+      rates: data.thicknesses.map((thickness) => ({
+        thicknessId: thickness.id,
+        thicknessLabel: thickness.label,
+        targetGrossRate: "",
+        materialMultiplier: "1",
+      })),
+    });
+  }
+
+  async function createProduct(event: React.FormEvent) {
+    event.preventDefault();
+    if (!newProduct) return;
+    setCreateBusy(true);
+    setCreateError("");
+    try {
+      await adminRequest("/api/admin/products", jsonRequest("POST", {
+        code: newProduct.code,
+        name: newProduct.name,
+        category: newProduct.category,
+        formulaKey: newProduct.formulaKey,
+        rates: newProduct.rates.map((rate) => ({
+          thicknessId: rate.thicknessId,
+          targetGrossRate: Number(rate.targetGrossRate),
+          materialMultiplier: Number(rate.materialMultiplier),
+        })),
+      }));
+      setNewProduct(null);
+      await onSaved("Новое изделие добавлено в калькулятор");
+    } catch (reason) {
+      setCreateError(reason instanceof Error ? reason.message : "Не удалось добавить изделие");
+    } finally {
+      setCreateBusy(false);
+    }
+  }
 
   async function save() {
     setBusy(true);
@@ -40,11 +93,32 @@ export function CatalogSection({ section, data, onSaved }: Props) {
   }
 
   if (section === "pricing") return <section className="admin-section">
-    <div className="admin-heading"><div><p className="admin-kicker">ПРАЙС</p><h1>Цены изделий</h1></div><span>Цена указана за м² с текущим НДС и коэффициентами</span></div>
+    <div className="admin-heading"><div><p className="admin-kicker">ПРАЙС</p><h1>Цены изделий</h1></div><div className="admin-heading-actions"><span>Цена указана за м² с текущим НДС и коэффициентами</span><button className="primary-button" onClick={openNewProduct}>＋ Добавить изделие</button></div></div>
+    <div className="product-formula-list">
+      {data.products.map((product) => {
+        const formula = productFormulas[product.formulaKey];
+        return <article key={product.id}><div><strong>{product.name}</strong><small>{product.code} · {product.category}</small></div><span>{formula.label}</span><code>{formula.formula}</code></article>;
+      })}
+    </div>
     <div className="admin-table-wrap"><table className="admin-table pricing-table"><thead><tr><th>Изделие</th><th>Диапазон</th><th>Толщина</th><th>Доля металла</th><th>Цена за м²</th></tr></thead><tbody>
       {rates.map((rate) => <tr key={rate.id}><td><strong>{rate.productName}</strong></td><td>{rate.tierKey === "default" ? "Базовая" : `${rate.minBoundary ?? 0}–${rate.maxBoundary ?? "∞"}`}</td><td>{rate.thicknessCode} мм</td><td><input type="number" step="0.01" min="0" value={rate.materialMultiplier} onChange={(event) => setRates((rows) => rows.map((item) => item.id === rate.id ? { ...item, materialMultiplier: Number(event.target.value) } : item))} /></td><td><div className="money-input"><input type="number" step="0.01" min="0" value={Number(rate.currentGrossRate.toFixed(2))} onChange={(event) => setRates((rows) => rows.map((item) => item.id === rate.id ? { ...item, currentGrossRate: Number(event.target.value) } : item))} /><span>₽</span></div></td></tr>)}
     </tbody></table></div>
     <SaveBar busy={busy} error={error} onSave={save} />
+    {newProduct && <div className="modal-backdrop"><form className="admin-modal product-modal" onSubmit={createProduct}>
+      <button type="button" className="modal-close" aria-label="Закрыть" onClick={() => setNewProduct(null)}>×</button>
+      <h2>Новое изделие</h2>
+      <p className="modal-description">Выберите существующий метод расчёта и задайте цену для каждой толщины. Изделие сразу появится в калькуляторе.</p>
+      <div className="admin-form-grid">
+        <label>Название<input required minLength={2} value={newProduct.name} onChange={(event) => setNewProduct({ ...newProduct, name: event.target.value })} /></label>
+        <label>Код<input required minLength={2} pattern="[A-Za-z][A-Za-z0-9_-]*" placeholder="Например, ductExtra" value={newProduct.code} onChange={(event) => setNewProduct({ ...newProduct, code: event.target.value })} /></label>
+        <label className="span-2">Категория<input required minLength={2} placeholder="Например, Фасонные изделия" value={newProduct.category} onChange={(event) => setNewProduct({ ...newProduct, category: event.target.value })} /></label>
+        <label className="span-2">Метод расчёта<select value={newProduct.formulaKey} onChange={(event) => setNewProduct({ ...newProduct, formulaKey: event.target.value as ProductFormulaKey })}>{Object.values(productFormulas).map((formula) => <option value={formula.key} key={formula.key}>{formula.label}</option>)}</select></label>
+        <div className="selected-formula span-2"><span>Формула площади</span><code>{productFormulas[newProduct.formulaKey].formula}</code></div>
+      </div>
+      <fieldset className="new-product-rates"><legend>Цены по толщине</legend>{newProduct.rates.map((rate, index) => <article key={rate.thicknessId}><strong>{rate.thicknessLabel}</strong><label>Цена за м² с НДС<input required type="number" min="0.01" step="0.01" value={rate.targetGrossRate} onChange={(event) => setNewProduct({ ...newProduct, rates: newProduct.rates.map((item, itemIndex) => itemIndex === index ? { ...item, targetGrossRate: event.target.value } : item) })} /></label><label>Доля металла<input required type="number" min="0" max="1000" step="0.01" value={rate.materialMultiplier} onChange={(event) => setNewProduct({ ...newProduct, rates: newProduct.rates.map((item, itemIndex) => itemIndex === index ? { ...item, materialMultiplier: event.target.value } : item) })} /></label></article>)}</fieldset>
+      {createError && <div className="admin-alert error">{createError}</div>}
+      <button className="primary-button" disabled={createBusy}>{createBusy ? "Добавляем…" : "Добавить изделие"}</button>
+    </form></div>}
   </section>;
 
   if (section === "metal") return <section className="admin-section">

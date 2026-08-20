@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { downloadInvoiceExcel } from "@/app/excel-export";
 import { calculateQuote } from "@/lib/domain/pricing";
 import { formatArea, formatRub } from "@/lib/domain/format";
-import type { InvoiceDocument, ProductDimensions, PublicCatalog, QuoteItemInput } from "@/lib/domain/types";
+import type { InvoiceDocument, PaymentCreationResult, PaymentPublicConfig, ProductDimensions, PublicCatalog, QuoteItemInput } from "@/lib/domain/types";
 import { downloadInvoicePdf } from "@/lib/client/pdf-export";
 import {
   canonicalDateValue,
@@ -20,6 +20,7 @@ import {
   MAX_ANGLE_VALUE,
   MAX_DIMENSION_VALUE,
   MAX_INVOICE_ITEM_QUANTITY,
+  MIN_RECTANGULAR_WIDTH_MM,
   parsePositiveDecimal,
   parsePositiveInteger,
 } from "@/lib/validation/numeric-input";
@@ -41,7 +42,7 @@ const emptyClient = (): ClientDetails => ({ name: "", inn: "", kpp: "", address:
 const emptyMeta = (): InvoiceMeta => ({
   issueDate: todayInMoscow(), dueDate: "", project: "", requestNumber: "", applicant: "", notes: "",
 });
-type ExportStage = "saving" | "pdf" | "excel" | null;
+type ExportStage = "saving" | "pdf" | "excel" | "payment" | null;
 type FormMessage = { kind: "success" | "error" | "info"; text: string } | null;
 type NumericDimensionKey = Exclude<keyof EditableDimensions, "rail">;
 type ItemFieldKey = NumericDimensionKey | "quantity";
@@ -111,7 +112,11 @@ function validateItem(item: EditableItem, product: PublicCatalog["products"][num
   for (const key of requiredDimensions(product)) {
     const result = parsePositiveDecimal(item.dimensions[key], dimensionLabels[key]);
     const maximum = key === "angle" ? MAX_ANGLE_VALUE : MAX_DIMENSION_VALUE;
-    if (result.success && result.value <= maximum) dimensions[key] = result.value;
+    const isRectangularWidth = product.calculationMethod !== "ROUND_DAMPER"
+      && (key === "width" || key === "height" || key === "width2" || key === "height2");
+    if (result.success && isRectangularWidth && result.value < MIN_RECTANGULAR_WIDTH_MM) {
+      errors[key] = `${dimensionLabels[key]}: значение должно быть не меньше ${MIN_RECTANGULAR_WIDTH_MM} мм`;
+    } else if (result.success && result.value <= maximum) dimensions[key] = result.value;
     else if (result.success) errors[key] = `${dimensionLabels[key]}: значение не должно превышать ${maximum.toLocaleString("ru-RU")}`;
     else {
       errors[key] = result.error;
@@ -191,7 +196,7 @@ function DateField({ id, label, value, min, error, onChange }: {
   />{error && <small className="field-error" id={errorId} role="alert">{error}</small>}</label>;
 }
 
-export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }) {
+export function Calculator({ initialCatalog, paymentConfig }: { initialCatalog: PublicCatalog; paymentConfig: PaymentPublicConfig }) {
   const [items, setItems] = useState<EditableItem[]>(() => [makeItem(initialCatalog, 1)]);
   const [meta, setMeta] = useState<InvoiceMeta>(emptyMeta);
   const [client, setClient] = useState<ClientDetails>(emptyClient);
@@ -239,6 +244,33 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
       window.setTimeout(() => setMessage({ kind: "error", text: "Не удалось сохранить черновик в браузере. Не закрывайте страницу до завершения работы." }), 0);
     }
   }, [client, draftReady, items, meta, savedInvoice]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    const parameters = new URLSearchParams(window.location.search);
+    const invoiceId = parameters.get("invoice");
+    if (!invoiceId || !parameters.get("payment")) return;
+    let active = true;
+    void fetch(`/api/public/invoices/${encodeURIComponent(invoiceId)}/payment-status`, { cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json() as { number?: string; status?: string; error?: string };
+        if (!response.ok) throw new Error(result.error || "Не удалось проверить оплату");
+        if (!active) return;
+        if (result.status === "PAID") {
+          setSavedInvoice((current) => current?.id === invoiceId ? { ...current, status: "PAID" } : current);
+          setMessage({ kind: "success", text: `Счёт № ${result.number ?? ""} оплачен` });
+        } else {
+          setMessage({ kind: "info", text: "Платёж обрабатывается. Статус счёта обновится после подтверждения платёжной системы." });
+        }
+      })
+      .catch((reason) => {
+        if (active) setMessage({ kind: "error", text: reason instanceof Error ? reason.message : "Не удалось проверить оплату" });
+      })
+      .finally(() => {
+        if (active) window.history.replaceState({}, "", window.location.pathname);
+      });
+    return () => { active = false; };
+  }, [draftReady]);
 
   const itemValidations = useMemo(() => items.map((item) => {
     const product = initialCatalog.products.find((candidate) => candidate.code === item.productCode);
@@ -358,6 +390,37 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
     return operation;
   }
 
+  function payInvoice() {
+    if (exportLockRef.current) return exportLockRef.current;
+    const operation = (async () => {
+      setMessage(null);
+      try {
+        if (!paymentConfig.available) throw new Error("Онлайн-оплата пока не подключена компанией");
+        const invoice = await ensureInvoice();
+        setExportStage("payment");
+        const response = await fetch(`/api/public/invoices/${encodeURIComponent(invoice.id)}/payment`, { method: "POST" });
+        const result = await response.json() as PaymentCreationResult & { error?: string };
+        if (!response.ok) throw new Error(result.error || "Не удалось перейти к оплате");
+        if (result.alreadyPaid) {
+          setSavedInvoice({ ...invoice, status: "PAID" });
+          setMessage({ kind: "success", text: `Счёт № ${invoice.number} уже оплачен` });
+          return;
+        }
+        if (!result.confirmationUrl) throw new Error("Платёжная ссылка не получена");
+        window.location.assign(result.confirmationUrl);
+      } catch (error) {
+        setMessage({ kind: "error", text: error instanceof Error ? error.message : "Не удалось перейти к оплате" });
+      } finally {
+        setExportStage(null);
+      }
+    })();
+    exportLockRef.current = operation;
+    void operation.finally(() => {
+      if (exportLockRef.current === operation) exportLockRef.current = null;
+    });
+    return operation;
+  }
+
   function newInvoice() {
     const defaultItem = makeItem(initialCatalog, 1);
     if (isMeaningfulDraft(meta, client, items, defaultItem, savedInvoice)
@@ -399,6 +462,17 @@ export function Calculator({ initialCatalog }: { initialCatalog: PublicCatalog }
         <div className="export-actions">
           <button onClick={() => exportInvoice("pdf")} disabled={!canExport || Boolean(exportStage)}>{exportLabel("pdf", true)} <b>↗</b></button>
           <button onClick={() => exportInvoice("excel")} disabled={!canExport || Boolean(exportStage)}>{exportLabel("excel", true)} <b>↗</b></button>
+          <button
+            className="payment-button"
+            type="button"
+            onClick={payInvoice}
+            disabled={!canExport || Boolean(exportStage) || !paymentConfig.available}
+            title={paymentConfig.available ? undefined : "Появится после подключения корпоративного эквайринга"}
+          >
+            {exportStage === "payment" ? "Переходим к оплате…" : paymentConfig.available
+              ? `Оплатить${paymentConfig.testMode ? " (тест)" : ""}`
+              : "Оплата пока не подключена"} <b>→</b>
+          </button>
         </div>
       </div>
     </section>

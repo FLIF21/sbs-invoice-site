@@ -6,6 +6,9 @@ import type {
   QuoteItemInput,
 } from "./types";
 import { grossMoney, roundArea, roundMoney, roundRate, sumMoney } from "./rounding";
+import { MIN_RECTANGULAR_WIDTH_MM } from "../validation/numeric-input";
+
+export class QuoteInputError extends Error {}
 
 function positive(value: number | undefined, field: string) {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
@@ -20,6 +23,14 @@ function positiveInteger(value: number | undefined, field: string) {
   return parsed;
 }
 
+function rectangularWidth(value: number | undefined, field: string) {
+  const parsed = positive(value, field);
+  if (parsed < MIN_RECTANGULAR_WIDTH_MM) {
+    throw new QuoteInputError(`Поле «${field}» должно быть не меньше ${MIN_RECTANGULAR_WIDTH_MM} мм`);
+  }
+  return parsed;
+}
+
 export function calculateArea(method: string, dimensions: ProductDimensions, quantity: number) {
   const qty = positiveInteger(quantity, "Количество");
   const width = dimensions.width;
@@ -29,31 +40,31 @@ export function calculateArea(method: string, dimensions: ProductDimensions, qua
 
   switch (method) {
     case "RECTANGULAR_DUCT": {
-      const a = positive(width, "Ширина A");
-      const b = positive(height, "Ширина B");
+      const a = rectangularWidth(width, "Ширина A");
+      const b = rectangularWidth(height, "Ширина B");
       const l = positive(length ?? 1500, "Длина L");
       unitArea = 2 * (a + b) * l / 1_000_000;
       break;
     }
     case "RECTANGULAR_ELBOW": {
-      const a = positive(width, "Ширина");
-      const b = positive(height, "Высота");
+      const a = rectangularWidth(width, "Ширина A");
+      const b = rectangularWidth(height, "Ширина B");
       const radius = positive(dimensions.radius, "Радиус");
       const angle = positive(dimensions.angle, "Угол");
       unitArea = (angle * Math.PI / 180) * (2 * (a + b)) * (a / 2 + radius) / 1_000_000;
       break;
     }
     case "RECTANGULAR_TRANSITION": {
-      const a = positive(width, "Ширина A");
-      const b = positive(height, "Ширина B");
+      const a = rectangularWidth(width, "Ширина A");
+      const b = rectangularWidth(height, "Ширина B");
       const l = positive(length, "Длина");
       const diameter = dimensions.diameter;
       const secondPerimeter = diameter
         ? Math.PI * positive(diameter, "Диаметр D")
-        : 2 * (positive(dimensions.width2, "Ширина A₂") + positive(dimensions.height2, "Ширина B₂"));
+        : 2 * (rectangularWidth(dimensions.width2, "Ширина A₂") + rectangularWidth(dimensions.height2, "Ширина B₂"));
       const secondCalculationSize = diameter
         ? Math.PI * diameter / (2 * Math.SQRT2)
-        : Math.hypot(positive(dimensions.width2, "Ширина A₂"), positive(dimensions.height2, "Ширина B₂"));
+        : Math.hypot(rectangularWidth(dimensions.width2, "Ширина A₂"), rectangularWidth(dimensions.height2, "Ширина B₂"));
       const averagePerimeter = (2 * (a + b) + secondPerimeter) / 2;
       const slant = Math.sqrt(l ** 2 + ((Math.hypot(a, b) - secondCalculationSize) / 2) ** 2);
       unitArea = averagePerimeter * slant / 1_000_000;
@@ -66,8 +77,8 @@ export function calculateArea(method: string, dimensions: ProductDimensions, qua
       break;
     }
     case "RECTANGULAR_DAMPER": {
-      const a = positive(width, "Ширина");
-      const b = positive(height, "Высота");
+      const a = rectangularWidth(width, "Ширина A");
+      const b = rectangularWidth(height, "Ширина B");
       const l = positive(length, "Длина");
       unitArea = (2 * (a + b) * l + a * b) / 1_000_000;
       break;
@@ -76,8 +87,8 @@ export function calculateArea(method: string, dimensions: ProductDimensions, qua
       unitArea = positive(dimensions.area, "Площадь");
       break;
     default: {
-      const a = positive(width, "Ширина");
-      const b = positive(height, "Высота");
+      const a = rectangularWidth(width, "Ширина A");
+      const b = rectangularWidth(height, "Ширина B");
       const l = positive(length, "Длина");
       unitArea = 2 * (a + b) * l / 1_000_000;
     }

@@ -5,6 +5,7 @@ import { downloadInvoiceExcel } from "@/app/excel-export";
 import { downloadInvoicePdf } from "@/lib/client/pdf-export";
 import { Permission, type PermissionName } from "@/lib/domain/access";
 import type { AdminData } from "@/lib/domain/admin-types";
+import { invoiceStatusLabel, invoiceStatusLabels } from "@/lib/domain/invoice-status";
 import type { InvoiceDocument, ProductDimensions } from "@/lib/domain/types";
 import { adminRequest, jsonRequest } from "../admin-api";
 
@@ -75,12 +76,12 @@ export function InvoicesSection({ invoices, products, thicknesses, permissions, 
     <div className="admin-heading"><div><p className="admin-kicker">ПРОДАЖИ</p><h1>История счетов</h1></div><span>{invoices.length} последних документов</span></div>
     <div className="table-toolbar">
       <input type="search" placeholder="Номер, клиент, ИНН или менеджер" value={query} onChange={(event) => setQuery(event.target.value)} />
-      <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="ALL">Все статусы</option><option value="ISSUED">Выставлен</option><option value="PAID">Оплачен</option><option value="DRAFT">Черновик</option><option value="CANCELLED">Отменён</option></select>
+      <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="ALL">Все статусы</option>{Object.entries(invoiceStatusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
     </div>
     {error && <div className="admin-alert error">{error}</div>}
     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Счёт</th><th>Клиент</th><th>Дата</th><th>Позиций</th><th>Менеджер</th><th>Сумма</th><th /></tr></thead><tbody>
       {filtered.map((invoice) => <tr key={invoice.id}>
-        <td><button className="text-button" onClick={() => loadInvoice(invoice.id)}><strong>№ {invoice.number}</strong></button><span className={`status-pill ${invoice.status.toLowerCase()}`}>{invoice.status}</span></td>
+        <td><button className="text-button" onClick={() => loadInvoice(invoice.id)}><strong>№ {invoice.number}</strong></button><span className={`status-pill ${invoice.status.toLowerCase()}`}>{invoiceStatusLabel(invoice.status)}</span></td>
         <td>{invoice.client}<small>{invoice.clientInn}</small></td>
         <td>{new Date(invoice.issueDate).toLocaleDateString("ru-RU")}</td><td>{invoice.items}</td><td>{invoice.manager}</td><td><strong>{rub(invoice.total)}</strong></td>
         <td><div className="row-actions"><button title="Открыть" onClick={() => loadInvoice(invoice.id)}>↗</button>
@@ -100,7 +101,7 @@ function InvoicePreview({ invoice, canEdit, onClose, onEdit }: { invoice: Invoic
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><article className="admin-modal invoice-modal">
     <button className="modal-close" onClick={onClose}>×</button>
     <div className="modal-title"><div><span>СЧЁТ</span><h2>№ {invoice.number}</h2></div><strong>{rub(invoice.total)}</strong></div>
-    <div className="invoice-facts"><div><span>Покупатель</span><b>{invoice.client.name}</b><small>{invoice.client.inn ? `ИНН ${invoice.client.inn}` : ""}</small></div><div><span>Дата</span><b>{new Date(invoice.issueDate).toLocaleDateString("ru-RU")}</b></div><div><span>Статус</span><b>{invoice.status}</b></div></div>
+    <div className="invoice-facts"><div><span>Покупатель</span><b>{invoice.client.name}</b><small>{invoice.client.inn ? `ИНН ${invoice.client.inn}` : ""}</small></div><div><span>Дата</span><b>{new Date(invoice.issueDate).toLocaleDateString("ru-RU")}</b></div><div><span>Статус</span><b>{invoiceStatusLabel(invoice.status)}</b></div></div>
     <div className="modal-table"><table><thead><tr><th>Изделие</th><th>Кол-во</th><th>Площадь</th><th>Сумма</th></tr></thead><tbody>{invoice.items.map((item, index) => <tr key={`${item.productCode}-${index}`}><td>{item.description}</td><td>{item.quantity}</td><td>{item.area.toFixed(2)} м²</td><td>{rub(item.grossTotal)}</td></tr>)}</tbody></table></div>
     <div className="modal-actions"><button className="secondary-button" onClick={() => downloadInvoicePdf(invoice)}>PDF</button><button className="secondary-button" onClick={() => downloadInvoiceExcel(invoice)}>Excel</button>{canEdit && <button className="primary-button" onClick={onEdit}>Редактировать</button>}</div>
   </article></div>;
@@ -114,7 +115,7 @@ function InvoiceEditor({ invoice, products, thicknesses, busy, onChange, onClose
   return <div className="modal-backdrop"><form className="admin-modal edit-invoice-modal" onSubmit={(event) => { event.preventDefault(); void onSave(invoice); }}>
     <button type="button" className="modal-close" onClick={onClose}>×</button><h2>Редактировать № {invoice.number}</h2>
     <div className="admin-form-grid">
-      <label>Статус<select value={invoice.status} onChange={(event) => onChange({ ...invoice, status: event.target.value })}><option>ISSUED</option><option>PAID</option><option>DRAFT</option><option>CANCELLED</option></select></label>
+      <label>Статус<select value={invoice.status} onChange={(event) => onChange({ ...invoice, status: event.target.value })}>{Object.entries(invoiceStatusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
       <label>Требуется к<input type="date" value={invoice.dueDate?.slice(0, 10) ?? ""} onChange={(event) => onChange({ ...invoice, dueDate: event.target.value ? `${event.target.value}T12:00:00.000Z` : null })} /></label>
       <label>Проект<input value={invoice.project ?? ""} onChange={(event) => onChange({ ...invoice, project: event.target.value })} /></label>
       <label>№ заявки<input value={invoice.requestNumber ?? ""} onChange={(event) => onChange({ ...invoice, requestNumber: event.target.value })} /></label>

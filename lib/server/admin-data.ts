@@ -2,6 +2,8 @@ import "server-only";
 import { InvoiceStatus, PermissionKey, Prisma } from "@prisma/client";
 import { db } from "./db";
 import { permissionLabels } from "./permissions";
+import { productFormulaKey } from "@/lib/domain/product-formulas";
+import type { ProductDimensions } from "@/lib/domain/types";
 
 const decimal = (value: Prisma.Decimal | null | undefined) => value?.toNumber() ?? 0;
 
@@ -90,6 +92,7 @@ export async function getAdminBootstrap(user: { permissions: PermissionKey[] }) 
       name: product.name,
       category: product.category,
       active: product.active,
+      formulaKey: productFormulaKey(product.calculationMethod, product.defaultDimensions as ProductDimensions),
       rates: product.rates.map((rate) => {
         const base = metalByThickness.get(rate.thicknessId)! * rate.materialMultiplier.toNumber() + rate.laborCost.toNumber();
         return {

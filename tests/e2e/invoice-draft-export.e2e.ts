@@ -8,6 +8,12 @@ async function setDateInput(page: import("@playwright/test").Page, label: string
   }, value);
 }
 
+function shiftDate(value: string, days: number) {
+  const date = new Date(`${value}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 async function fillValidInvoice(page: import("@playwright/test").Page) {
   await page.getByLabel("Покупатель").fill("ООО «Проверка дат»");
   await page.getByLabel("Ширина A, мм").fill("400");
@@ -18,6 +24,7 @@ async function fillValidInvoice(page: import("@playwright/test").Page) {
 test("reload сохраняет черновик, а PDF и Excel используют один счёт", async ({ page }) => {
   const testInvoices = new Map<string, { id: string; number: string }>();
   let postRequests = 0;
+  let paymentRequests = 0;
 
   await page.route("**/api/public/invoices", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
@@ -69,6 +76,21 @@ test("reload сохраняет черновик, а PDF и Excel использ
     });
   });
 
+  await page.route("**/api/public/invoices/invoice-e2e-1/payment", async (route) => {
+    paymentRequests += 1;
+    const origin = new URL(route.request().url()).origin;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ alreadyPaid: false, paymentId: "payment-e2e-1", confirmationUrl: `${origin}/payment/e2e-target` }),
+    });
+  });
+  await page.route("**/payment/e2e-target", (route) => route.fulfill({
+    status: 200,
+    contentType: "text/html; charset=utf-8",
+    body: "<main><h1>Тестовая платёжная страница</h1></main>",
+  }));
+
   await page.goto("/");
   await expect(page.locator("article.product")).toHaveCount(1);
   await expect(page.getByLabel("Номер счёта")).toHaveValue("Будет присвоен после сохранения");
@@ -78,6 +100,7 @@ test("reload сохраняет черновик, а PDF и Excel использ
   await expect(page.getByText("Заполните размеры изделия").first()).toBeVisible();
   await expect(page.locator("aside.summary").getByRole("button")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Скачать PDF" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Оплатить (тест)" })).toBeDisabled();
 
   await page.getByLabel("Покупатель").fill("ООО «E2E Покупатель»");
   await page.getByLabel("ИНН").fill("1234567890");
@@ -133,7 +156,14 @@ test("reload сохраняет черновик, а PDF и Excel использ
   await excelFile.cancel();
   await expect(page.getByText("Excel скачан. Счёт № E2E-000001")).toBeVisible();
 
+  await Promise.all([
+    page.waitForURL("**/payment/e2e-target"),
+    page.getByRole("button", { name: "Оплатить (тест)" }).click(),
+  ]);
+  await expect(page.getByRole("heading", { name: "Тестовая платёжная страница" })).toBeVisible();
+
   expect(postRequests).toBe(1);
+  expect(paymentRequests).toBe(1);
   expect(testInvoices.size).toBe(1);
   expect([...testInvoices.values()]).toEqual([{ id: "invoice-e2e-1", number: "E2E-000001" }]);
 });
@@ -142,30 +172,53 @@ test("даты связаны с формой, блокируют экспорт
   await page.goto("/");
   await fillValidInvoice(page);
 
-  await setDateInput(page, "Дата", "2026-08-13");
-  await setDateInput(page, "Требуется к", "2026-08-13");
+  const issueDate = await page.getByLabel("Дата", { exact: true }).inputValue();
+  const laterDate = shiftDate(issueDate, 7);
+  const earlierDate = shiftDate(issueDate, -1);
+
+  await setDateInput(page, "Дата", issueDate);
+  await setDateInput(page, "Требуется к", issueDate);
   await expect(page.getByLabel("Требуется к")).toHaveAttribute("aria-invalid", "false");
   await expect(page.getByRole("button", { name: "Скачать PDF" })).toBeEnabled();
 
-  await setDateInput(page, "Требуется к", "2026-08-20");
-  await expect(page.getByLabel("Требуется к")).toHaveValue("2026-08-20");
+  await setDateInput(page, "Требуется к", laterDate);
+  await expect(page.getByLabel("Требуется к")).toHaveValue(laterDate);
   await expect(page.getByRole("button", { name: "Скачать Excel" })).toBeEnabled();
 
   await page.reload();
-  await expect(page.getByLabel("Дата", { exact: true })).toHaveValue("2026-08-13");
-  await expect(page.getByLabel("Требуется к")).toHaveValue("2026-08-20");
+  await expect(page.getByLabel("Дата", { exact: true })).toHaveValue(issueDate);
+  await expect(page.getByLabel("Требуется к")).toHaveValue(laterDate);
   await expect(page.getByRole("button", { name: "Скачать PDF" })).toBeEnabled();
 
-  await setDateInput(page, "Дата", "2026-08-20");
-  await expect(page.getByLabel("Требуется к")).toHaveAttribute("min", "2026-08-20");
+  await setDateInput(page, "Дата", laterDate);
+  await expect(page.getByLabel("Требуется к")).toHaveAttribute("min", laterDate);
 
-  await setDateInput(page, "Дата", "2026-08-13");
-  await setDateInput(page, "Требуется к", "2026-08-12");
+  await setDateInput(page, "Дата", issueDate);
+  await setDateInput(page, "Требуется к", earlierDate);
 
   await expect(page.locator("#invoice-due-date-error")).toHaveText("Дата готовности не может быть раньше даты счёта");
   await expect(page.getByLabel("Требуется к")).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("button", { name: "Скачать PDF" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Скачать Excel" })).toBeDisabled();
+});
+
+test("ширины A и B не могут быть меньше 150 мм", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Покупатель").fill("ООО «Проверка размеров»");
+  await page.getByLabel("Ширина A, мм").fill("149");
+  await page.getByLabel("Ширина B, мм").fill("150");
+  await page.getByLabel("Длина L, мм").fill("1000");
+
+  await expect(page.locator("#item-1-width-error")).toHaveText("Ширина A: значение должно быть не меньше 150 мм");
+  await expect(page.getByRole("button", { name: "Скачать PDF" })).toBeDisabled();
+
+  await page.getByLabel("Ширина A, мм").fill("150");
+  await page.getByLabel("Ширина B, мм").fill("149");
+  await expect(page.locator("#item-1-height-error")).toHaveText("Ширина B: значение должно быть не меньше 150 мм");
+  await expect(page.getByRole("button", { name: "Скачать PDF" })).toBeDisabled();
+
+  await page.getByLabel("Ширина B, мм").fill("150");
+  await expect(page.getByRole("button", { name: "Скачать PDF" })).toBeEnabled();
 });
 
 for (const width of [320, 360, 390, 700]) {
@@ -185,6 +238,7 @@ for (const width of [320, 360, 390, 700]) {
       const select = document.querySelector<HTMLSelectElement>(".product-head select")!.getBoundingClientRect();
       const button = document.querySelector<HTMLButtonElement>(".product-head .remove")!.getBoundingClientRect();
       const selectedName = document.querySelector<HTMLElement>(".selected-product-name")!;
+      const productImage = document.querySelector<HTMLImageElement>(".product-photo img")!;
       const interactive = [...document.querySelectorAll<HTMLElement>(".public-site button,.public-site input,.public-site select,.public-site textarea,.public-site a")]
         .filter((element) => getComputedStyle(element).display !== "none")
         .map((element) => {
@@ -203,6 +257,7 @@ for (const width of [320, 360, 390, 700]) {
         cardRight: card.right,
         tooSmall: interactive.filter((element) => element.width < 44 || element.height < 44),
         selectedNameFits: selectedName.scrollWidth <= selectedName.clientWidth && selectedName.scrollHeight <= selectedName.clientHeight,
+        productImageFit: getComputedStyle(productImage).objectFit,
       };
     });
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport);
@@ -212,6 +267,7 @@ for (const width of [320, 360, 390, 700]) {
     expect(layout.cardRight).toBeLessThanOrEqual(layout.viewport);
     expect(layout.tooSmall).toEqual([]);
     expect(layout.selectedNameFits).toBe(true);
+    expect(layout.productImageFit).toBe("contain");
   });
 }
 

@@ -47,6 +47,17 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum PaymentProvider {
+  YOOKASSA
+  TEST
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  CANCELED
+}
+
 enum BackupStatus {
   CREATED
   RESTORED
@@ -282,11 +293,31 @@ model Invoice {
   client          Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
   createdBy       User?         @relation("InvoiceCreator", fields: [createdById], references: [id], onDelete: SetNull)
   items           InvoiceItem[]
+  payments        Payment[]
 
   @@index([status, issueDate])
   @@index([clientId, issueDate])
   @@index([createdById, createdAt])
   @@index([createdAt])
+}
+
+model Payment {
+  id              String          @id @default(cuid())
+  invoiceId       String
+  provider        PaymentProvider
+  externalId      String?         @unique
+  status          PaymentStatus   @default(PENDING)
+  amount          Decimal         @db.Decimal(18, 2)
+  currency        String          @default("RUB")
+  idempotencyKey  String          @unique
+  confirmationUrl String?
+  rawPayload      Json?
+  paidAt          DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  invoice         Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, status, createdAt])
 }
 
 model InvoiceItem {

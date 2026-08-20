@@ -7,7 +7,7 @@ export const e2eCatalog: PublicCatalog = {
     name: "Воздуховод",
     category: "Воздуховоды",
     description: null,
-    imagePath: null,
+    imagePath: "/products/duct.png",
     defaultDimensions: { width: 400, height: 250, length: 1500, rail: "20/20" },
     calculationMethod: "RECTANGULAR_DUCT",
     rates: [{
@@ -25,7 +25,7 @@ export const e2eCatalog: PublicCatalog = {
     name: "Переход прямоугольный → прямоугольный",
     category: "Переходы",
     description: null,
-    imagePath: null,
+    imagePath: "/products/transition.png",
     defaultDimensions: { width: 400, height: 250, width2: 300, height2: 200, length: 500, rail: "20/20" },
     calculationMethod: "RECTANGULAR_TRANSITION",
     rates: [{

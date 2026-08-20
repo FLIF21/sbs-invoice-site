@@ -56,6 +56,35 @@ describe("calculateArea", () => {
     expect(calculateArea("RECTANGULAR_DUCT", { width: 400, height: 250 }, 1)).toBe(1.95);
   });
 
+  it("принимает ширины A и B от 150 мм включительно", () => {
+    expect(calculateArea("RECTANGULAR_DUCT", { width: 150, height: 150, length: 1_000 }, 1)).toBe(0.6);
+  });
+
+  it("сохраняет контрольную площадь воздуховода 500×300×1000 мм", () => {
+    expect(calculateArea("RECTANGULAR_DUCT", { width: 500, height: 300, length: 1_000 }, 1)).toBe(1.6);
+  });
+
+  it.each([
+    ["A", { width: 149.999, height: 150, length: 1_000 }],
+    ["B", { width: 150, height: 149.999, length: 1_000 }],
+  ])("отклоняет ширину %s меньше 150 мм", (_, dimensions) => {
+    expect(() => calculateArea("RECTANGULAR_DUCT", dimensions, 1)).toThrow(/не меньше 150 мм/);
+  });
+
+  it("проверяет обе пары ширин прямоугольного перехода", () => {
+    expect(() => calculateArea("RECTANGULAR_TRANSITION", {
+      width: 400,
+      height: 250,
+      width2: 149,
+      height2: 200,
+      length: 1_000,
+    }, 1)).toThrow(/Ширина A₂.*не меньше 150 мм/);
+  });
+
+  it("не применяет прямоугольный минимум к диаметру круглой заслонки", () => {
+    expect(calculateArea("ROUND_DAMPER", { width: 100, length: 300 }, 1)).toBe(0.1021);
+  });
+
   it("считает прямоугольный отвод по средней линии радиуса", () => {
     expect(calculateArea("RECTANGULAR_ELBOW", { width: 400, height: 250, radius: 100, angle: 90 }, 1)).toBe(0.6126);
   });

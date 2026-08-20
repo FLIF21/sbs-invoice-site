@@ -134,3 +134,15 @@ export type InvoiceDocument = {
   client: InvoiceClientData;
   items: CalculatedLine[];
 };
+
+export type PaymentPublicConfig = {
+  available: boolean;
+  testMode: boolean;
+  provider: "disabled" | "test" | "yookassa";
+};
+
+export type PaymentCreationResult = {
+  alreadyPaid: boolean;
+  confirmationUrl: string | null;
+  paymentId: string | null;
+};
